@@ -1,0 +1,173 @@
+function [] = Conclusion(benchmarkResults, maxItr, maxRun, algorithmFileAddress, nFunction, cecName, dim)
+    % CONCLUSION
+    % This function processes benchmark optimization results, generates
+    % summary statistics, performs statistical tests, and saves all outputs
+    % into structured Excel files.
+    %
+    % Inputs:
+    %   benchmarkResults     : Cell array with results for each algorithm/function
+    %   maxItr               : Max number of iterations
+    %   maxRun               : Number of independent runs per function
+    %   algorithmFileAddress : File path to algorithm definitions
+    %   nFunction            : Number of benchmark functions
+    %   cecName              : Index for CEC benchmark year
+    %   dim                  : Dimensionality of the benchmark problem
+
+    %% === Configuration ===
+    cecNames  = ["2005","2014","2017","2019","2020","2022"];
+    cecLabel  = char(cecNames(cecName)); % Selected CEC benchmark name
+
+    % Load algorithm names from the given file
+    [algorithmNames, ~] = Get_algorithm(algorithmFileAddress);
+    numAlgs = numel(algorithmNames);
+
+    % Define directory paths for results
+    scriptPath = mfilename('fullpath');
+    moduleDir  = fileparts(scriptPath);
+    projectDir = fileparts(moduleDir);
+    resultsDir = fullfile(projectDir, 'results', ['CEC' cecLabel]);
+    algoDir    = fullfile(resultsDir, 'algorithms');
+
+    % Ensure directories exist
+    if ~exist(resultsDir,'dir'), mkdir(resultsDir); end
+    if ~exist(algoDir,'dir'), mkdir(algoDir); end
+
+    % File naming settings
+    fileFormat = 'xlsx';
+    if ~isstring(dim)
+        baseName   = sprintf('%dDim', dim);
+    else
+        baseName   = sprintf('%sDim', dim);
+    end
+
+    % Skip rule for specific cases
+    shouldSkip = @(cecNameVal, fIdx) (cecNameVal==3 && fIdx==2);
+
+    %% === Step 1: Correct results if below minimum threshold ===
+    benchmarkResultsFixed = benchmarkResults; % Copy original results
+    for a = 1:numAlgs
+        for f = 1:nFunction
+            if isempty(benchmarkResults{a,f}) || shouldSkip(cecName, f)
+                continue; % Skip empty or excluded function results
+            end
+            M = benchmarkResults{a,f};
+            % Fix last iteration values per run
+            if size(M,1) >= maxItr && size(M,2) >= maxRun
+                for r = 1:maxRun
+                    M(maxItr, r) = FixIfBelowFmin(M(maxItr, r), f, cecName);
+                end
+            end
+            % Fix mean column if present
+            if size(M,2) >= maxRun+2
+                M(maxItr, maxRun+1) = FixIfBelowFmin(M(maxItr, maxRun+1), f, cecName);
+            end
+            benchmarkResultsFixed{a,f} = M;
+        end
+    end
+
+    %% === Step 2: Create summary table ===
+    summaryTable = cell(nFunction*3+1, numAlgs+2);
+    summaryTable(1,3:end) = cellstr(algorithmNames)'; % Algorithm headers
+
+    for f = 1:nFunction
+        row = (f-1)*3 + 2; % Row index for function block
+        summaryTable(row:row+2,1) = {sprintf('F%d',f)}; % Function labels
+        summaryTable(row:row+2,2) = {'Mean','Std','CPU'}; % Metric labels
+
+        for a = 1:numAlgs
+            if isempty(benchmarkResultsFixed{a,f}) || shouldSkip(cecName, f)
+                continue; % Skip invalid cases
+            end
+            dataMat = benchmarkResultsFixed{a,f};
+            % Extract statistics for this function/algorithm
+            summaryTable{row,   a+2} = dataMat(maxItr,   maxRun+1); % Mean
+            summaryTable{row+1, a+2} = dataMat(maxItr,   maxRun+2); % Std
+            summaryTable{row+2, a+2} = dataMat(maxItr+1, maxRun+1); % CPU time
+        end
+    end
+    Saving(summaryTable, resultsDir, baseName, fileFormat, 'Conclusions', 'B2');
+
+    %% === Step 3: Save raw iteration-wise results ===
+    for a = 1:numAlgs
+        rawData = nan(maxItr, nFunction);
+        for f = 1:nFunction
+            if isempty(benchmarkResultsFixed{a,f}) || shouldSkip(cecName, f)
+                continue;
+            end
+            % Best value per iteration
+            rawData(:,f) = benchmarkResultsFixed{a,f}(1:maxItr, maxRun+1);
+        end
+        % Prepare iteration column and headers
+        headers    = [{'Iteration'}, arrayfun(@(x) sprintf('F%d',x),1:nFunction,'UniformOutput',false)];
+        iterColumn = (1:maxItr)';
+        fullData   = [iterColumn, rawData];
+
+        sheetName = algorithmNames{a};
+        algFile   = sprintf('%s_%s', baseName, sheetName);
+        % Save headers and data to file
+        Saving(headers, algoDir, algFile, fileFormat, sheetName, 'A1');
+        Saving(fullData, algoDir, algFile, fileFormat, sheetName, 'A2');
+    end
+
+    %% === Step 4: Perform statistical tests ===
+    refAlg   = 1; % Reference algorithm index
+    compAlgs = 2:numAlgs; % Algorithms to compare against
+    funNames = arrayfun(@(f) sprintf('F%d',f), 1:nFunction, 'UniformOutput', false)';
+
+    % --- Paired T-Test ---
+    [pMat, hMat] = deal(nan(nFunction, numel(compAlgs)));
+    for idx = 1:numel(compAlgs)
+        j = compAlgs(idx);
+        for f = 1:nFunction
+            if isempty(benchmarkResultsFixed{refAlg,f}) || isempty(benchmarkResultsFixed{j,f})
+                continue;
+            end
+            % Extract data for t-test
+            x1 = benchmarkResultsFixed{refAlg,f}(maxItr,1:maxRun);
+            x2 = benchmarkResultsFixed{j,f}(maxItr,1:maxRun);
+            [h,p] = ttest(x1,x2,'Alpha',0.05);
+            pMat(f,idx) = p; hMat(f,idx) = h;
+        end
+    end
+    colNames = arrayfun(@(j) sprintf('%s vs %s',algorithmNames{refAlg},algorithmNames{j}), compAlgs, 'UniformOutput', false);
+    saveStatTable(pMat, colNames, funNames, resultsDir, baseName, fileFormat, 'TTest_p');
+    saveStatTable(hMat, colNames, funNames, resultsDir, baseName, fileFormat, 'TTest_h');
+
+    % --- Wilcoxon signed-rank test ---
+    [pWMat, hWMat, statMat] = deal(nan(nFunction, numel(compAlgs)));
+    for idx = 1:numel(compAlgs)
+        j = compAlgs(idx);
+        for f = 1:nFunction
+            if isempty(benchmarkResultsFixed{refAlg,f}) || isempty(benchmarkResultsFixed{j,f})
+                continue;
+            end
+            % Extract data for Wilcoxon test
+            x1 = benchmarkResultsFixed{refAlg,f}(maxItr,1:maxRun);
+            x2 = benchmarkResultsFixed{j,f}(maxItr,1:maxRun);
+            [pW,hW,stW] = signrank(x1,x2,'alpha',0.05);
+            pWMat(f,idx) = pW; hWMat(f,idx) = hW; statMat(f,idx) = stW.signedrank;
+        end
+    end
+    saveStatTable(pWMat,  colNames, funNames, resultsDir, baseName, fileFormat, 'Wilcoxon_p');
+    saveStatTable(hWMat,  colNames, funNames, resultsDir, baseName, fileFormat, 'Wilcoxon_h');
+    saveStatTable(statMat,colNames, funNames, resultsDir, baseName, fileFormat, 'Wilcoxon_stat');
+
+    %% === Step 5: Save explanation sheet ===
+    expl = {
+        "Conclusions: Mean, Std, CPU per function and algorithm";
+        "Raw data: per-algorithm time series in separate files";
+        "TTest_p: p-values of paired t-test (first vs others)";
+        "TTest_h: hReject flags of paired t-test";
+        "Wilcoxon_p/h/stat: p-values, hFlags, and signed-rank stats";
+        };
+    Saving(expl, resultsDir, baseName, fileFormat, 'Explanation', 'A1');
+end
+
+%% === Helper function to save statistical tables ===
+function saveStatTable(dataMatrix, colNames, funNames, resultsDir, baseName, fileFormat, sheetName)
+    % Convert matrix to table with function names and variable names
+    T = array2table(dataMatrix, 'VariableNames', colNames);
+    T = addvars(T, funNames, 'Before',1,'NewVariableNames','Function');
+    % Save the table to the specified sheet
+    Saving(T, resultsDir, baseName, fileFormat, sheetName, 'A2');
+end

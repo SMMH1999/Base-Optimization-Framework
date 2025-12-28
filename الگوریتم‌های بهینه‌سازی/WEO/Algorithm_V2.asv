@@ -1,0 +1,176 @@
+function [Best_score,Best_pos,cg_curve]=Algorithm_V2(SearchAgents_no,Max_iteration,lb,ub,dim,fobj)
+    cg_curve=zeros(1,Max_iteration);
+
+    if size(ub,2)==1
+        ub=ones(1,dim)*ub;
+        lb=ones(1,dim)*lb;
+    end
+
+    % Initial radius and variables
+    r = (ub - lb) / 10;
+    Delta_max = (ub - lb) / 10;
+    Food_fitness = inf;
+    Food_pos = zeros(dim, 1);
+    Enemy_fitness = -inf;
+    Enemy_pos = zeros(dim, 1);
+
+    X = initialization(SearchAgents_no, dim, ub, lb);
+    Fitness = zeros(1, SearchAgents_no);
+    DeltaX = initialization(SearchAgents_no, dim, ub, lb);
+
+    % Parameters for Lotus Effect
+    R = 2; % Initial growth area for local search
+    beta = 5; % Number of local search iterations
+    probability = 0.1;
+
+
+    for iter = 1:Max_iteration
+        r = (ub - lb) / 4 + ((ub - lb) * (iter / Max_iteration) * 2);
+        w = 0.9 - iter * ((0.9 - 0.4) / Max_iteration);
+        my_c = 0.1 - iter * ((0.1 - 0) / (Max_iteration / 2));
+
+        if my_c < 0
+            my_c = 0;
+        end
+
+        f = 2 * rand;
+        e = my_c;
+
+        % Evaluate fitness and update Food and Enemy X
+        for i = 1:SearchAgents_no
+            Fitness(1, i) = fobj(X(:, i)');
+            if Fitness(1, i) < Food_fitness
+                Food_fitness = Fitness(1, i);
+                Food_pos = X(:, i);
+            end
+            if Fitness(1, i) > Enemy_fitness && all(X(:, i) < ub') && all(X(:, i) > lb')
+                Enemy_fitness = Fitness(1, i);
+                Enemy_pos = X(:, i);
+            end
+        end
+
+        for i = 1:SearchAgents_no
+            clear Neighbours_DeltaX Neighbours_X
+            neighbours_no = 0;
+            index = 0;
+
+            % Find neighbors
+            for j = 1:SearchAgents_no
+                Dist2Enemy = distance(X(:, i), X(:, j));
+                if all(Dist2Enemy <= r) && all(Dist2Enemy ~= 0)
+                    index = index + 1;
+                    neighbours_no = neighbours_no + 1;
+                    Neighbours_DeltaX(:, index) = DeltaX(:, j);
+                    Neighbours_X(:, index) = X(:, j);
+                end
+            end
+
+            % Food attraction and Enemy distraction
+            Dist2Food = distance(X(:, i), Food_pos(:, 1));
+            F = (Dist2Food <= r) * (Food_pos - X(:, i));
+            Dist2Enemy = distance(X(:, i), Enemy_pos(:, 1));
+            Enemy = (Dist2Enemy <= r) * (Enemy_pos + X(:, i));
+
+            for j = 1:dim
+                if X(j, i) > ub(j)
+                    X(j, i) = lb(j);
+                    DeltaX(j, i) = rand;
+                end
+                if X(j, i) < lb(j)
+                    X(j, i) = ub(j);
+                    DeltaX(j, i) = rand;
+                end
+            end
+            if rand() <= probability
+                if any(Dist2Food > r)
+                    if neighbours_no > 1
+                        for j = 1:dim
+                            DeltaX(j, i) = w * DeltaX(j, i);
+                            DeltaX(j, i) = min(max(DeltaX(j, i), -Delta_max(j)), Delta_max(j));
+                            X(j, i) = X(j, i) + DeltaX(j, i);
+                        end
+                    else
+                        X(:, i) = X(:, i) + Levy(dim)' .* X(:, i);
+                        DeltaX(:, i) = 0;
+                    end
+                else
+                    for j = 1:dim
+                        DeltaX(j, i) = (f * F(j) + e * Enemy(j)) + w * DeltaX(j, i);
+                        DeltaX(j, i) = min(max(DeltaX(j, i), -Delta_max(j)), Delta_max(j));
+                        X(j, i) = X(j, i) + DeltaX(j, i);
+                    end
+                end
+            else
+                %% Lotus Effect Exploitation Phase (Local Search)
+                for b = 1:beta
+                    stepSize = R * (X(:, i) - Food_pos);
+                    X(:, i) = X(:, i) - stepSize;
+                    R = R * exp(-4 * (iter / Max_iteration)^2);
+                end
+            end
+
+            %% Drop Water in pits
+            velocities = DeltaX(:, i);
+            W = (((1 - (iter / (maxIter + eps))) ^ (2 * randn())) .* (rand(1, Dim) .* (iter / maxIter)) .* rand(1, Dim));
+            pits = [];
+            for j = 1:beta
+                randAgent = X(:, randi(1, SearchAgents_no));
+                delta = W .* (rand * randAgent - rand * population(i, :)) .* norm(bestAgent - population(i, :));
+                pits(j, :) = X(:, i) + randn() * delta;
+            end
+            pitFitness = CostFunction(pits);
+            f_max = max(pitFitness);
+            f_min = min(pitFitness);
+
+            % Calculate pit capacities based on fitness
+            const = 1;
+            dropletCapacities = const * (abs(Fitness(i) - f_max)) ./ abs(f_min - f_max);
+            pitCapacities = const * (abs(pitFitness - f_max)) ./ abs(f_min - f_max);
+
+            % Find the closest pit to the droplet
+            bi_pitCapacities = pitCapacities < dropletCapacities
+            distances = vecnorm(pits - X(i,:), 2, 2);
+            [~, nearest_pit_idx] = min(distances);
+
+            % Calculate movement vector toward the nearest pit
+            movement_vector = pits(nearest_pit_idx, :) - X(i, :);
+
+            q_min = 0.01; q_max = 2.7;
+            q = q_min + iter * ((q_max - q_min) / Max_iteration);
+            
+            velocities(i, :) = q * velocities(i, :) + movement_vector;
+            X(i, :) = X(i, :) + velocities(i, :);
+
+            % Check if the pit has reached its capacity
+            const_P = 0.5;
+            if pitCapacities(nearest_pit_idx) > const_P
+                % Reduce pit capacity by 1 for each droplet it holds
+                pitCapacities(nearest_pit_idx) = pitCapacities(nearest_pit_idx) - 1;
+            else
+                % Overflow: find a new pit with higher capacity
+                higher_capacity_pits = find(pitCapacities > 0);
+                if ~isempty(higher_capacity_pits)
+                    new_pit_idx = higher_capacity_pits(randi(length(higher_capacity_pits)));                    
+                    X(i, :) = X(i, :) + (pits(new_pit_idx, :) - X(i, :)) * 0.5; % Move halfway
+                    velocities(i, :) = velocities(i, :) * 0.5; % Reduce velocity upon overflow
+                end
+            end
+
+
+
+            %% Reinforce Local Search %%%%%%%%%% Eq. (17)
+            dropVelocity = DeltaX(:, i);
+            for b = 1:beta
+                movement = dropVelocity + rand * (Food_pos - X(:, i));
+                dropVelocity = dropVelocity + movement;
+                X(:, i) = X(:, i) + dropVelocity;
+            end
+
+            X(:, i) = min(max(X(:, i), lb), ub);
+        end
+
+        Best_score = Food_fitness;
+        Best_pos = Food_pos;
+        cg_curve(iter) = Best_score;
+    end
+end

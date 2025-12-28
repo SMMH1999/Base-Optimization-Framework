@@ -1,0 +1,90 @@
+function [Elite_Fitness, Elite_Position, Convergence_Curve] = SBO(LB, UB, Dim, Bower_no, Max_iter, Cost_Function, Function_Number, costFunctionDetails)
+    %% SBO Parameters
+    alpha = 0.94;                       % Greatest step size
+    pMutation = 0.05;                   % Mutation probability
+    Z = 0.02;                           % Percent of the difference between the upper and lower limit
+    sigma = Z * (max(UB) - min(LB));    % proportion of space width
+
+    %% Initialization
+    Bower_Position = Population_Generator(Bower_no, Dim, UB, LB);
+    Bower_Fitness = inf(1, Bower_no);
+    Convergence_Curve = inf(1, Max_iter);
+
+    %% Calculate the objective function for each search agent
+    if eq(func2str(costFunctionDetails), 'CEC_2005_Function')
+        % For objective function 2005
+        for i = 1 : Bower_no
+            Bower_Fitness(i) = Cost_Function(Bower_Position(i, :));
+        end
+    else
+        % For after objective function 2005
+        Bower_Fitness = Cost_Function(Bower_Position', Function_Number);
+    end
+
+    %% Find fitness and position of Elite
+    [Elite_Fitness, Elite_Index] = min(Bower_Fitness);
+    Elite_Position = Bower_Position(Elite_Index(1, 1), :);
+
+    %% Main Loop
+    for it = 1:Max_iter
+        New_Bower_Position = Bower_Position;
+
+        %% Calculating the probability of Fitness for each bower
+        F = zeros(1, Bower_no);
+        for i = 1:Bower_no
+            if Bower_Fitness(i) >= 0
+                F(i) = 1 / (1 + Bower_Fitness(i));
+            else
+                F(i) = 1 + abs(Bower_Fitness(i));
+            end
+        end
+        P = F / sum(F);
+
+        %% Update bower
+        for i = 1:Bower_no
+            for k = 1:Dim
+                % Select target bower
+                j = RouletteWheelSelection(P);
+
+                lambda = alpha / (1 + P(j));
+                New_Bower_Position(i, k) = Bower_Position(i, k) + lambda * (((Bower_Position(j, k) + Elite_Position(k)) / 2) - Bower_Position(i, k));
+
+                % Mutation
+                if rand <= pMutation
+                    New_Bower_Position(i, k) = New_Bower_Position(i, k) + (sigma * randn());
+                end
+            end
+            
+            %% Evaluation
+            if eq(func2str(costFunctionDetails), 'CEC_2005_Function')
+                % For objective function 2005
+                New_Bower_Fitness(i) = Cost_Function(New_Bower_Position(i,:));
+            else
+                % For after objective function 2005
+                New_Bower_Fitness(i) = Cost_Function(New_Bower_Position(i,:)', Function_Number);
+            end
+
+        end
+
+        Bower_Position = [Bower_Position New_Bower_Position];
+        Bower_Fitness = [Bower_Fitness New_Bower_Fitness];        
+
+        %% Sort Population
+        [Bower_Fitness, sortIndex] = sort(Bower_Fitness);
+        Bower_Position = Bower_Position(sortIndex);
+        Bower_Position = Bower_Position(1:Dim);
+
+        %% Update Elite per iteration
+        Elite_Fitness = Bower_Fitness(1);
+        Elite_Position = Bower_Position(1, :);
+
+        %% Update Convergence_Curve
+        Convergence_Curve(it) = Elite_Fitness;
+    end
+end
+
+function f = RouletteWheelSelection(P)
+    r = rand();
+    C = cumsum(P);
+    f = find(r <= C, 1, 'first');
+end
