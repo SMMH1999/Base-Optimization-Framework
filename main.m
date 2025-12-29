@@ -1,39 +1,58 @@
-clear;
-clc;
-close all;
+%% Initialization
+clearvars;    % Clear only variables, not everything
+clc;          % Clear command window
 
-cd('C:\Users\pc\Desktop\کد نویسی و برنامه‌ها');
-maxRun = 3;
-if isempty(gcp)
-    parpool("Processes",maxRun);
+% Set the base path to the folder where this script is located
+basePath = fileparts(which('main.m'));
+cd(basePath);
+addpath(genpath(basePath));
+
+%% ---------------- Parallel control (GLOBAL FLAG) ----------------
+% Global switch:
+% true  -> enable parallel execution (parfor inside RunBenchmarkSuite)
+% false -> run everything serially
+global RUN_PARALLEL;
+RUN_PARALLEL = true;   % <<< set to false to disable parallel mode
+
+% Parameters
+maxRun = 4;          % Number of independent runs for each algorithm
+maxItr = 500;        % Maximum number of iterations
+populationNo = 30;   % Population size for algorithms
+
+% Start parallel pool only if parallel mode is enabled
+if RUN_PARALLEL
+    c = parcluster;
+    maxAllowedWorkers = c.NumWorkers;
+
+    % Best practice: match workers with maxRun if you parallelize the run-loop
+    numWorkers = min(maxRun, maxAllowedWorkers);
+
+    if numWorkers > 1 && isempty(gcp('nocreate'))
+        % "Processes" is usually better for CPU-heavy independent runs
+        parpool("Processes", numWorkers);
+    end
 end
 
-for index = 1 : 6
-    addpath(genpath('C:\Users\pc\Desktop\کد نویسی و برنامه‌ها'));
+% Define dimensions for each benchmark set
+CECsDim = { {"fix"}, [30, 100], [30, 100], {"fix"}, [10, 20], [20] };
+% CECsDim = { {"fix"}, [30, 100], [30, 100], {"fix"}, [10, 20], [10, 20] };
 
-    % Setting some variables
-    CECsDim = cell([{"fix"}, [30, 100], [30, 100], {"fix"}, [10, 20], [10, 20]]);
-    populationNo = 30;
 
-    maxItr = 500;
+% Select which benchmark indices to run
+selectedIndex = 6:6;
 
-    %     if index ~= 1
-    % if index ~= 2
-    %     if index ~= 3
-    % if index ~= 4
-    % if index ~= 5
-    % if index ~= 6
-    % if index ~= 1 && index ~= 2
-    % if index ~= 1 && index ~= 6
-    % if index ~= 4 && index ~= 5
-    %     if index ~= 3 && index ~= 6
-    % if index ~= 3 && index ~= 4 && index ~= 5 && index ~= 6
-    %     if index ~= 1 && index ~= 2 && index ~= 6
-    %         continue;
-    %     end
+%% Main execution loop
+for index = selectedIndex
+    fprintf('--- Running Benchmark Index %d ---\n', index);
+    cd(basePath);
 
-    Comparetor3(index, populationNo, maxRun, maxItr, CECsDim{index});
-    rmpath(genpath('C:\Users\pc\Desktop\کد نویسی و برنامه‌ها'));
-
+    RunBenchmarkSuite(index, populationNo, maxRun, maxItr, CECsDim{index});
 end
-% delete(gcp('nocreate'));
+
+%% Clean up
+rmpath(genpath(basePath));
+
+% Close the pool only if you want to free resources at the end
+% if RUN_PARALLEL
+%     delete(gcp('nocreate'));
+% end

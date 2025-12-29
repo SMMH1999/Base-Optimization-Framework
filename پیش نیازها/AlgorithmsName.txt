@@ -1,8 +1,3 @@
-ORCAS_1
-ORCAS_2
-ORCAS_3
-ORCAS_4
-ORCAS_4_1
-GWO
-PSO
-GA
+RS
+MemoryCV_Optimizer
+MeanGuidedBestBlend
