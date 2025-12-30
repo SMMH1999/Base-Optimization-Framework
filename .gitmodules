@@ -1,0 +1,3 @@
+[submodule "optimization algorithms"]
+	path = optimization algorithms
+	url = https://github.com/SMMH1999/Optimization-Algorithms.git
