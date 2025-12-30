@@ -17,15 +17,7 @@ function RunBenchmarkSuite(CEC_Index, populationNo, maxRun, maxItr, CECsDim)
     %% Loop over dimensions
     for dimIdx = 1:numel(CECsDim)
 
-        d = CECsDim{dimIdx};      % force: make CECsDim always a cell array
-        if iscell(d)
-            dim = d{1};           % tag for output
-            DimOverride = d{2};   % numeric or []
-        else
-            dim = d;              % numeric dim
-            DimOverride = d;      % numeric
-        end
-
+        Dim = resolveDim(CECsDim, dimIdx);
         benchmarkResults = cell(size(algorithms, 1), nFunction);
 
         % ---- NEW (simple FE logs) ----
@@ -47,9 +39,6 @@ function RunBenchmarkSuite(CEC_Index, populationNo, maxRun, maxItr, CECsDim)
                 [LB, UB, Dim] = costFunctionDetails(functionNo);
                 localCostFunction = costFunction;
             end
-
-            % ONLY ONE LINE decides dimension (super clear)
-            if ~isempty(DimOverride), Dim = DimOverride; end
 
             %% Loop over algorithms
             for algorithmNo = 1:size(algorithms, 1)
@@ -111,7 +100,7 @@ function RunBenchmarkSuite(CEC_Index, populationNo, maxRun, maxItr, CECsDim)
                     algorithmResults(1:maxItr, :) = curveMat;
 
                 else
-                    %% ===== No =====
+                    %% ===== Yes =====
                     for run = 1:maxRun
                         fprintf('Mode:SERIAL | CEC:%s | Dim:%d | F%d | Alg:%s | Run:%d\n', ...
                             CECNames(CEC_Index), Dim, functionNo, string(algorithmName), run);
@@ -153,10 +142,10 @@ function RunBenchmarkSuite(CEC_Index, populationNo, maxRun, maxItr, CECsDim)
         end
 
         %% Output stage
-        Conclusion(benchmarkResults, maxItr, maxRun, algorithmFileAddress, nFunction, CEC_Index, dim);
-        Ploting(benchmarkResults, maxItr, maxRun, algorithmFileAddress, CEC_Index, dim);
+        Conclusion(benchmarkResults, maxItr, maxRun, algorithmFileAddress, nFunction, CEC_Index, Dim);
+        Ploting(benchmarkResults, maxItr, maxRun, algorithmFileAddress, CEC_Index, Dim);
 
-        feLogName = sprintf('FELog_CEC%s_Dim%s.mat', CECNames(CEC_Index), char(string(dim)));
+        feLogName = sprintf('FELog_CEC%s_Dim%s.mat', CECNames(CEC_Index), char(string(Dim)));
 
         % Save FE logs into the versioned results folder
         ctx = ProjectContext('get');
@@ -177,14 +166,14 @@ function tf = isParallelEnabled(maxRunLocal)
     tf = ~isempty(RUN_PARALLEL) && RUN_PARALLEL && ~isempty(pool) && pool.NumWorkers > 1 && maxRunLocal > 1;
 end
 
-% function DimOut = resolveDim(CECsDimIn, idx)
-%     if iscell(CECsDimIn)
-%         DimOut = CECsDimIn{idx};
-%     else
-%         DimOut = CECsDimIn(idx);
-%     end
-%     DimOut = double(DimOut);
-% end
+function DimOut = resolveDim(CECsDimIn, idx)
+    if iscell(CECsDimIn)
+        DimOut = CECsDimIn{idx};
+    else
+        DimOut = CECsDimIn(idx);
+    end
+    DimOut = double(DimOut);
+end
 
 function y = WrapObjective(innerFun, counter, popNo)
     y = innerFun();

@@ -28,7 +28,7 @@ function ctx = ProjectContext(action, varargin)
             % <Root Dir>/results/result_yy-mm-dd HH-MM
             stamp = datestr(now,'yy-mm-dd HH-MM');
             resultsBase = fullfile(projectRoot, 'results');
-            resultsRoot = fullfile(resultsBase, ['result_' stamp]);
+            resultsRoot = fullfile(resultsBase, ['result ' stamp]);
 
             % Locate template root
             t1 = fullfile(projectRoot, 'src', 'results_template');

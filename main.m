@@ -14,7 +14,7 @@ ensureAlgorithmsSubmodule(basePath, algDir, 14); % 14 days threshold
 addedPaths = genpath(basePath);
 addpath(addedPaths);
 
-% Initialize versioned results context (creates results_YYYYMMDD_HHMMSS and snapshots templates)
+% Initialize versioned results context (creates results_YY-MM-DD HH-MM and snapshots templates)
 ProjectContext('init', basePath);
 
 
@@ -26,7 +26,7 @@ global RUN_PARALLEL;
 RUN_PARALLEL = false;   % <<< set to false to disable parallel mode
 
 % Parameters
-maxRun = 3;          % Number of independent runs for each algorithm
+maxRun = 1;          % Number of independent runs for each algorithm
 maxItr = 500;        % Maximum number of iterations
 populationNo = 30;   % Population size for algorithms
 
@@ -45,12 +45,21 @@ if RUN_PARALLEL
 end
 
 % Define dimensions for each benchmark set
-CECsDim = { {"fix"}, [30, 100], [30, 100], {"fix"}, [10, 20], [20] };
+CECsDim = { ...
+    { {'fixDim', []} }, ...                          % CEC2005
+    { 10, 30, 50, 100 }, ...                         % CEC2014
+    { 10, 30, 50, 100 }, ...                         % CEC2017
+    { {'fixDim', []} }, ...                          % CEC2019
+    { 10, 15, 20 }, ...                              % CEC2020
+    { 10, 15, 20 } ...                               % CEC2022
+};
+
+% CECsDim = { {"fix"}, [30, 100], [30, 100], {"fix"}, [10, 20], [20] };
 % CECsDim = { {"fix"}, [30, 100], [30, 100], {"fix"}, [10, 20], [10, 20] };
 
 
 % Select which benchmark indices to run
-selectedIndex = 6:6;
+selectedIndex = 1:2;
 
 %% Main execution loop
 for index = selectedIndex
