@@ -74,7 +74,9 @@ function RunBenchmarkSuite(CEC_Index, populationNo, maxRun, maxItr, CECsDim)
                         rng(baseSeed + run, "twister");
                         tStart = tic;
 
-                        maxFEs = populationNo * maxItr;
+                        % maxFEs = populationNo * maxItr;
+                        maxFEs = 1000000;
+
                         counter = EvalCounter(maxFEs);
                         objectiveRun = BuildObjective(localCostFunction, functionNo, isCEC2005, Dim, counter, populationNo);
 
@@ -141,8 +143,15 @@ function RunBenchmarkSuite(CEC_Index, populationNo, maxRun, maxItr, CECsDim)
         Conclusion(benchmarkResults, maxItr, maxRun, algorithmFileAddress, nFunction, CEC_Index, Dim);
         Ploting(benchmarkResults, maxItr, maxRun, algorithmFileAddress, CEC_Index, Dim);
 
-        feLogName = sprintf('FELog_CEC%s_Dim%d.mat', CECNames(CEC_Index), Dim);
-        save(feLogName, 'benchmarkFEs', 'benchmarkFEWarnItr', 'populationNo', 'maxItr', 'maxRun', 'CEC_Index', 'Dim');
+        feLogName = sprintf('FELog_CEC%s_Dim%s.mat', CECNames(CEC_Index), char(string(Dim)));
+
+        % Save FE logs into the versioned results folder
+        ctx = ProjectContext('get');
+        resultsDir = fullfile(ctx.resultsRoot, ['CEC' char(string(CECNames(CEC_Index)))]);
+        if exist(resultsDir,'dir')~=7, mkdir(resultsDir); end
+        algDir = fullfile(resultsDir, 'algorithms');
+        if exist(algDir,'dir')~=7, mkdir(algDir); end
+        save(fullfile(algDir, feLogName), 'benchmarkFEs', 'benchmarkFEWarnItr', 'populationNo', 'maxItr', 'maxRun', 'CEC_Index', 'Dim');
     end
 end
 

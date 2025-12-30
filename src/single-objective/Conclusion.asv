@@ -26,6 +26,11 @@ function [] = Conclusion(benchmarkResults, maxItr, maxRun, algorithmFileAddress,
     resultsDir = fullfile(ctx.resultsRoot, ['CEC' cecLabel]);
     algoDir    = fullfile(resultsDir, 'algorithms');
 
+
+    % Ensure directories exist
+    if ~exist(resultsDir,'dir'), mkdir(resultsDir); end
+    if ~exist(algoDir,'dir'), mkdir(algoDir); end
+
     % Ensure directories exist
     if ~exist(resultsDir,'dir'), mkdir(resultsDir); end
     if ~exist(algoDir,'dir'), mkdir(algoDir); end
@@ -164,36 +169,4 @@ function saveStatTable(dataMatrix, colNames, funNames, resultsDir, baseName, fil
     T = addvars(T, funNames, 'Before',1,'NewVariableNames','Function');
     % Save the table to the specified sheet
     Saving(T, resultsDir, baseName, fileFormat, sheetName, 'A2');
-end
-function tag = dimTagFromInput(dimVal)
-    %DIMTAGFROMINPUT Convert a dimension input to a standard dimension tag.
-    %   Examples:
-    %     10      -> '10Dim'
-    %     '10'    -> '10Dim'
-    %     '10Dim' -> '10Dim'
-    %     'fix'   -> 'fixDim'
-    %     0       -> 'fixDim'   (useful when some suites use fixed dimension)
-    %
-    % This helper is meant to be placed on the MATLAB path (e.g., src/single-objective)
-    % so legacy functions can call it without changing their signatures.
-
-    if isnumeric(dimVal)
-        if isequal(dimVal, 0)
-            tag = 'fixDim';
-        else
-            tag = sprintf('%dDim', double(dimVal));
-        end
-        return;
-    end
-
-    s = lower(string(dimVal));
-    s = strtrim(s);
-
-    if s == "fix" || s == "fixdim"
-        tag = 'fixDim';
-    elseif endsWith(s, "dim")
-        tag = char(s);
-    else
-        tag = char(s + "Dim");
-    end
 end

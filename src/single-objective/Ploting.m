@@ -11,23 +11,18 @@ function [] = Ploting(benchmarkResults, maxItr, maxRun, algorithmFileAddress, ce
         dim = num2str(dim);
     end
 
-    %% Determine project root and set plot directory
-    scriptPath  = mfilename('fullpath'); % Path to this script
-    moduleDir   = fileparts(scriptPath); % Directory containing this script
-    projectDir  = fileparts(moduleDir);  % Parent directory (project root)
+    %% Determine versioned plot directory (centralized)
+    ctx = ProjectContext('get');
 
     % Safely get CEC name as string scalar
-    if isstring(cecNames(cecName)) || ischar(cecNames(cecName))
-        cecStr = char(cecNames(cecName));
-    else
-        error('cecNames(%d) is not a valid string or char.', cecName);
-    end
+    cecStr = char(string(cecNames(cecName)));
 
-    % Build final plot directory path
-    plotDir = fullfile(projectDir, 'results', strcat('CEC', cecStr), strcat('Plot_', num2str(dim)));
+    % Normalize plot subfolder from dim
+    dimTag  = dimTagFromInput(dim);
+    plotSub = plotSubFromDimTag(dimTag);
 
-
-    % Ensure plotDir is a simple 1D char vector
+    plotDir = fullfile(ctx.resultsRoot, ['CEC' cecStr], plotSub);
+% Ensure plotDir is a simple 1D char vector
     plotDir = char(plotDir(:)');  % row vector
 
     % Create directory if it doesn't exist
@@ -96,8 +91,8 @@ function [] = Ploting(benchmarkResults, maxItr, maxRun, algorithmFileAddress, ce
             % Set subplot title and axis labels
 
             %
-            %   یادم باشه این بخش رو بعدا جوری اصلاح کنم که برای ستون سمت
-            %   چپ و سطر اخر فقط اینا رو قرار بده.
+            % TODO: Improve axis labeling rules (e.g., left column & last row only).
+            %
             %
 
             title(sprintf('CEC%s - F%d', cecNames(cecName), funcIdx));
@@ -135,4 +130,42 @@ function [] = finalizeFigure(path, figureCounter, cecName, plotHandles, legendEn
 
     % Close figure to free memory
     close(gcf);
+end
+
+
+% ===== Helper functions =====
+function tag = dimTagFromInput(dimVal)
+%DIMTAGFROMINPUT Normalize dimension tag for folder naming.
+    if isnumeric(dimVal)
+        if isempty(dimVal) || dimVal == 0
+            tag = 'fixDim';
+        else
+            tag = sprintf('%dDim', dimVal);
+        end
+        return;
+    end
+
+    s = lower(string(dimVal));
+    s = strtrim(s);
+
+    if s == "fix" || s == "fixdim"
+        tag = 'fixDim';
+    elseif endsWith(s, "dim")
+        tag = char(s);
+    else
+        tag = char(s + "Dim");
+    end
+end
+
+function sub = plotSubFromDimTag(dimTag)
+%PLOTSUBFROMDIMTAG Map dimension tag to plot subfolder name.
+%   '10Dim' -> 'Plot_10'
+%   'fixDim'-> 'Plot_fix'
+    s = lower(string(dimTag));
+    if s == "fixdim"
+        sub = 'Plot_fix';
+    else
+        numStr = regexprep(string(dimTag), "Dim", "");
+        sub = char("Plot_" + numStr);
+    end
 end

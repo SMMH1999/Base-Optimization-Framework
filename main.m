@@ -5,17 +5,22 @@ clc;          % Clear command window
 % Set the base path to the folder where this script is located
 basePath = fileparts(which('main.m'));
 cd(basePath);
-addpath(genpath(basePath));
+addedPaths = genpath(basePath);
+addpath(addedPaths);
+
+% Initialize versioned results context (creates results_YYYYMMDD_HHMMSS and snapshots templates)
+ProjectContext('init', basePath);
+
 
 %% ---------------- Parallel control (GLOBAL FLAG) ----------------
 % Global switch:
 % true  -> enable parallel execution (parfor inside RunBenchmarkSuite)
 % false -> run everything serially
 global RUN_PARALLEL;
-RUN_PARALLEL = true;   % <<< set to false to disable parallel mode
+RUN_PARALLEL = false;   % <<< set to false to disable parallel mode
 
 % Parameters
-maxRun = 4;          % Number of independent runs for each algorithm
+maxRun = 3;          % Number of independent runs for each algorithm
 maxItr = 500;        % Maximum number of iterations
 populationNo = 30;   % Population size for algorithms
 
@@ -50,7 +55,7 @@ for index = selectedIndex
 end
 
 %% Clean up
-rmpath(genpath(basePath));
+rmpath(addedPaths);
 
 % Close the pool only if you want to free resources at the end
 % if RUN_PARALLEL
