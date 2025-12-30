@@ -32,14 +32,11 @@ function ctx = ProjectContext(action, varargin)
 
             % Locate template root
             t1 = fullfile(projectRoot, 'src', 'results_template');
-            t2 = fullfile(projectRoot, 'src', 'results', 'results_template');
 
             if exist(t1,'dir') == 7
                 templateRoot = t1;
-            elseif exist(t2,'dir') == 7
-                templateRoot = t2;
             else
-                error('Template root not found. Expected: %s OR %s', t1, t2);
+                error('Template root not found. Expected: %s', t1);
             end
 
             % Ensure base results dir and this run dir exist

@@ -1,12 +1,12 @@
 function ensureAlgorithmsSubmodule(projectRoot, algDir, maxAgeDays)
-% ensureAlgorithmsSubmodule
-% Ensures the algorithms repository (as a git submodule) is present.
-% If missing/empty, runs: git submodule update --init --recursive
-% If present but last fetch is older than maxAgeDays, runs: git fetch --all --prune
-%
-% Notes:
-% - For submodules, "pull" may not be appropriate (often detached at pinned commit).
-% - "fetch" refreshes the repository metadata without changing the pinned checkout.
+    % ensureAlgorithmsSubmodule
+    % Ensures the algorithms repository (as a git submodule) is present.
+    % If missing/empty, runs: git submodule update --init --recursive
+    % If present but last fetch is older than maxAgeDays, runs: git fetch --all --prune
+    %
+    % Notes:
+    % - For submodules, "pull" may not be appropriate (often detached at pinned commit).
+    % - "fetch" refreshes the repository metadata without changing the pinned checkout.
 
     if nargin < 3 || isempty(maxAgeDays)
         maxAgeDays = 14;
@@ -41,7 +41,7 @@ function ensureAlgorithmsSubmodule(projectRoot, algDir, maxAgeDays)
 end
 
 function tf = isDirEffectivelyEmpty(p)
-% Returns true if directory has no meaningful files/folders (ignores "." and "..").
+    % Returns true if directory has no meaningful files/folders (ignores "." and "..").
 
     d = dir(p);
     names = {d.name};
@@ -52,8 +52,8 @@ function tf = isDirEffectivelyEmpty(p)
 end
 
 function ageDays = getSubmoduleFetchAgeDays(algDir)
-% Tries to locate the real git directory for the submodule and read FETCH_HEAD age.
-% Returns NaN if it cannot determine.
+    % Tries to locate the real git directory for the submodule and read FETCH_HEAD age.
+    % Returns NaN if it cannot determine.
 
     ageDays = NaN;
 
@@ -106,7 +106,7 @@ function ageDays = getSubmoduleFetchAgeDays(algDir)
 end
 
 function d = fileAgeDays(filePath)
-% Returns file age in days based on filesystem timestamp.
+    % Returns file age in days based on filesystem timestamp.
 
     info = dir(filePath);
     if isempty(info)
@@ -117,7 +117,7 @@ function d = fileAgeDays(filePath)
 end
 
 function assertGitAvailable()
-% Throws an error if git is not available on PATH.
+    % Throws an error if git is not available on PATH.
 
     [status, ~] = system('git --version');
     if status ~= 0
@@ -126,7 +126,7 @@ function assertGitAvailable()
 end
 
 function runGitAt(rootDir, command)
-% Runs a shell command at a specific directory (cross-platform best effort).
+    % Runs a shell command at a specific directory (cross-platform best effort).
 
     if ispc
         cmd = sprintf('cd /d "%s" && %s', rootDir, command);

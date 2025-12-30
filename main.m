@@ -64,6 +64,6 @@ end
 rmpath(addedPaths);
 
 % Close the pool only if you want to free resources at the end
-% if RUN_PARALLEL
-%     delete(gcp('nocreate'));
-% end
+if RUN_PARALLEL
+    delete(gcp('nocreate'));
+end

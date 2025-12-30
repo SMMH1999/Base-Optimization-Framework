@@ -56,7 +56,7 @@ function RunBenchmarkSuite(CEC_Index, populationNo, maxRun, maxItr, CECsDim)
                 feWarnItr = NaN(maxRun, 1);
 
                 if useParallel
-                    fprintf('CEC:%s | Dim:%d | F%d | Alg:%s | Runs:%d | Mode:PARALLEL\n', ...
+                    fprintf('Mode:PARALLEL | CEC:%s | Dim:%d | F%d | Alg:%s | Runs:%d\n', ...
                         CECNames(CEC_Index), Dim, functionNo, string(algorithmName), maxRun);
                 end
 
@@ -100,7 +100,7 @@ function RunBenchmarkSuite(CEC_Index, populationNo, maxRun, maxItr, CECsDim)
 
                 else
                     for run = 1:maxRun
-                        fprintf('CEC:%s | Dim:%d | F%d | Alg:%s | Run:%d | Mode:SERIAL\n', ...
+                        fprintf('Mode:SERIAL | CEC:%s | Dim:%d | F%d | Alg:%s | Run:%d\n', ...
                             CECNames(CEC_Index), Dim, functionNo, string(algorithmName), run);
 
                         tStart = tic;
