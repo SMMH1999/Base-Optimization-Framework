@@ -5,6 +5,12 @@ clc;          % Clear command window
 % Set the base path to the folder where this script is located
 basePath = fileparts(which('main.m'));
 cd(basePath);
+
+% --- Ensure algorithms submodule exists and is not stale ---
+algDir = fullfile(basePath, 'optimization algorithms');
+ensureAlgorithmsSubmodule(basePath, algDir, 14); % 14 days threshold
+
+
 addedPaths = genpath(basePath);
 addpath(addedPaths);
 
