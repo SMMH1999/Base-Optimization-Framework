@@ -1,6 +1,6 @@
 function RunBenchmarkSuite(CEC_Index, populationNo, maxRun, maxItr, CECsDim)
     %% Benchmark Function
-    CECNames = ["2005","2014","2017","2019","2020","2022"];
+    CECNames = ["CEC2005","CEC2014","CEC2017","CEC2019","CEC2020","CEC2022"];
     [costFunction, costFunctionDetails, nFunction] = Load_CEC_Function(CEC_Index);
 
     %% Load algorithms list
