@@ -1,6 +1,0 @@
-CEC_2005_Function
-CEC_2014_Function
-CEC_2017_Function
-CEC_2019_Function
-CEC_2020_Function
-CEC_2022_Function

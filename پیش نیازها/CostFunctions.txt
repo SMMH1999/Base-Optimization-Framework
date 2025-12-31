@@ -1,6 +1,0 @@
-CostFunctions
-cec14_func
-cec17_func
-cec19_func
-cec20_func
-cec22_func

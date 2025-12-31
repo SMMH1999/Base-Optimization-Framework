@@ -177,15 +177,6 @@ function tf = isParallelEnabled(maxRunLocal)
     tf = ~isempty(RUN_PARALLEL) && RUN_PARALLEL && ~isempty(pool) && pool.NumWorkers > 1 && maxRunLocal > 1;
 end
 
-% function DimOut = resolveDim(CECsDimIn, idx)
-%     if iscell(CECsDimIn)
-%         DimOut = CECsDimIn{idx};
-%     else
-%         DimOut = CECsDimIn(idx);
-%     end
-%     DimOut = double(DimOut);
-% end
-
 function y = WrapObjective(innerFun, counter, popNo)
     y = innerFun();
 

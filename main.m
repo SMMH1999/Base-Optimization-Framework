@@ -23,10 +23,10 @@ ProjectContext('init', basePath);
 % true  -> enable parallel execution (parfor inside RunBenchmarkSuite)
 % false -> run everything serially
 global RUN_PARALLEL;
-RUN_PARALLEL = false;   % <<< set to false to disable parallel mode
+RUN_PARALLEL = true;   % <<< set to false to disable parallel mode
 
 % Parameters
-maxRun = 1;          % Number of independent runs for each algorithm
+maxRun = 4;          % Number of independent runs for each algorithm
 maxItr = 500;        % Maximum number of iterations
 populationNo = 30;   % Population size for algorithms
 
@@ -50,16 +50,23 @@ CECsDim = { ...
     { 10, 30, 50, 100 }, ...                         % CEC2014
     { 10, 30, 50, 100 }, ...                         % CEC2017
     { {'fixDim', []} }, ...                          % CEC2019
-    { 10, 15, 20 }, ...                              % CEC2020
-    { 10, 15, 20 } ...                               % CEC2022
+    { 10, 20 }, ...                              % CEC2020
+    { 10, 20 } ...                               % CEC2022
 };
 
-% CECsDim = { {"fix"}, [30, 100], [30, 100], {"fix"}, [10, 20], [20] };
-% CECsDim = { {"fix"}, [30, 100], [30, 100], {"fix"}, [10, 20], [10, 20] };
+% CECsDim = { ...
+%     { {'fixDim', []} }, ...                          % CEC2005
+%     { 10, 30, 50, 100 }, ...                         % CEC2014
+%     { 10, 30, 50, 100 }, ...                         % CEC2017
+%     { {'fixDim', []} }, ...                          % CEC2019
+%     { 10, 15, 20 }, ...                              % CEC2020
+%     { 10, 15, 20 } ...                               % CEC2022
+% };
+
 
 
 % Select which benchmark indices to run
-selectedIndex = 1:2;
+selectedIndex = 5:6;
 
 %% Main execution loop
 for index = selectedIndex
