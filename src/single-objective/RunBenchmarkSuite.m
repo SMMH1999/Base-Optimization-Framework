@@ -1,7 +1,18 @@
 function RunBenchmarkSuite(CEC_Index, populationNo, maxRun, maxItr, CECsDim)
     %% Benchmark Function
     CECNames = ["CEC2005","CEC2014","CEC2017","CEC2019","CEC2020","CEC2022"];
+
+    if CEC_Index == 7
+        Comparetor_RW(CEC_Index, populationNo, maxRun, maxItr, CECsDim);
+        return;
+    end
+
     [costFunction, costFunctionDetails, nFunction] = Load_CEC_Function(CEC_Index);
+
+% Pre-detect benchmark families
+    % isRW = strcmp(func2str(costFunctionDetails), 'RW_Function');
+    
+
 
     %% Load algorithms list
     algorithmFileAddress = '\AlgorithmsName.txt';

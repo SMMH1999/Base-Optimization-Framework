@@ -23,10 +23,10 @@ ProjectContext('init', basePath);
 % true  -> enable parallel execution (parfor inside RunBenchmarkSuite)
 % false -> run everything serially
 global RUN_PARALLEL;
-RUN_PARALLEL = false;   % <<< set to false to disable parallel mode
+RUN_PARALLEL = true;   % <<< set to false to disable parallel mode
 
 % Parameters
-maxRun = 1;          % Number of independent runs for each algorithm
+maxRun = 4;          % Number of independent runs for each algorithm
 maxItr = 500;        % Maximum number of iterations
 populationNo = 30;   % Population size for algorithms
 

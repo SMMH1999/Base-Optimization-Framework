@@ -1,93 +1,145 @@
 function [] = ConclusionRW(benchmarkResults, maxItr, maxRun, algorithmFileAddress, nFunction, cecName, dim)
-    % == Suite name (Real-World) ==
-    cecNames = "Real World Problems";
+%CONCLUSIONRW Save Real-World benchmark outputs in the same "style" as CEC Conclusion:
+% - resultsRoot/Real World Problems/<DimTag>.xlsx (Conclusions sheet)
+% - resultsRoot/Real World Problems/algorithms/<DimTag>_<Alg>.xlsx (per-alg raw curves)
 
-    % == Algorithm names/handles ==
-    [algorithmsName, algorithms] = Get_algorithm(algorithmFileAddress);
-    if isstring(algorithmsName) || ischar(algorithmsName), algorithmsName = cellstr(algorithmsName); end
-    numAlgs = numel(algorithmsName);
+    suiteName = "Real World Problems";
 
-    % == Resolve project paths (portable, no hard-coded absolute path) ==
-    scriptPath = mfilename('fullpath');
-    moduleDir  = fileparts(fileparts(scriptPath));
-    projectDir = fileparts(moduleDir);
-    resultsDir = fullfile(projectDir, 'results', char(cecNames));
-    algoDir    = fullfile(resultsDir, 'Algorithms');
+    % === Algorithms list ===
+    [algorithmNames, algorithms] = Get_algorithm(algorithmFileAddress);
+    if isstring(algorithmNames) || ischar(algorithmNames), algorithmNames = cellstr(algorithmNames); end
+    numAlgs = numel(algorithmNames);
+
+    % === Resolve results paths EXACTLY like CEC (via ProjectContext) ===
+    ctx = ProjectContext('get');
+    resultsDir = fullfile(ctx.resultsRoot, char(suiteName));
+    algoDir    = fullfile(resultsDir, 'algorithms');
+
     if ~exist(resultsDir,'dir'), mkdir(resultsDir); end
-    if ~exist(algoDir,'dir'),   mkdir(algoDir);   end
+    if ~exist(algoDir,'dir'),    mkdir(algoDir);    end
 
-    % == Conclusions table (4 rows per problem + 1 header, 2 meta cols + algs) ==
-    tableConclusion = cell(4*nFunction + 1, numAlgs + 2);
-    tableConclusion(1,1:2) = {'Problem','Stat'};
+    fileFormat = 'xlsx';
+    baseName   = dimTagFromInput(dim);     % e.g. '10Dim' or 'fixDim'
+
+    % Optional skip rule (keep if you really need it; otherwise delete)
+    shouldSkip = @(cecNameVal, fIdx) (cecNameVal==3 && fIdx==2);
+
+    %% === 1) Build Conclusions table (Min/Mean/Max/Std at final iteration) ===
+    summaryTable = cell(4*nFunction + 1, numAlgs + 2);
+    summaryTable(1,1:2) = {'Problem','Stat'};
     for a = 1:numAlgs
-        tableConclusion{1, a+2} = algorithmsName{a};
+        summaryTable{1,a+2} = algorithmNames{a};
     end
+
     statNames = {'Min','Mean','Max','Std'};
     for f = 1:nFunction
-        baseRow = 1 + (f-1)*4;
+        r0 = 1 + (f-1)*4;
         for s = 1:4
-            tableConclusion{baseRow + s, 1} = ['Problem' num2str(f)];
-            tableConclusion{baseRow + s, 2} = statNames{s};
+            summaryTable{r0+s,1} = sprintf('Problem %d', f);
+            summaryTable{r0+s,2} = statNames{s};
         end
     end
 
-    % == Headers for per-algorithm sheets ==
-    resultsHeader = cell(nFunction, 1);
-    for f = 1:nFunction
-        resultsHeader{f, 1} = ['Problem' num2str(f)];
+    for a = 1:numAlgs
+        for f = 1:nFunction
+            if isempty(benchmarkResults{a,f}) || shouldSkip(cecName,f), continue; end
+
+            M = benchmarkResults{a,f};
+
+            % columns: [runs ...] + [min mean max std] at (maxRun+1 .. maxRun+4)
+            cMin  = maxRun + 1;
+            cMean = maxRun + 2;
+            cMax  = maxRun + 3;
+            cStd  = maxRun + 4;
+
+            rFinal = min(size(M,1), maxItr);   % use last available iter row
+
+            r0 = 1 + (f-1)*4;
+            if size(M,2) >= cMin,  summaryTable{r0+1,a+2} = M(rFinal,cMin);  end
+            if size(M,2) >= cMean, summaryTable{r0+2,a+2} = M(rFinal,cMean); end
+            if size(M,2) >= cMax,  summaryTable{r0+3,a+2} = M(rFinal,cMax);  end
+            if size(M,2) >= cStd,  summaryTable{r0+4,a+2} = M(rFinal,cStd);  end
+        end
     end
 
-    % == Common file naming ==
-    if isa(dim,'double'), dimStr = num2str(dim); else, dimStr = char(string(dim)); end
-    fileFormat = 'xlsx';
-    fileName   = [dimStr 'Dim'];
+    % Save conclusions workbook (same pattern as CEC)
+    Saving(summaryTable, resultsDir, baseName, fileFormat, 'Conclusions', 'A2');
 
-    % == Loop over algorithms ==
-    for iAlgorithm = 1:numAlgs
-        % Row to export per problem (kept exactly as در کد تو: row maxItr+1)
-        outputResults = cell(nFunction, 1);
+    %% === 2) Save raw iteration curves per algorithm (like CEC Conclusion) ===
+    headers = [{'Iteration'}, arrayfun(@(x) sprintf('P%d',x), 1:nFunction, 'UniformOutput', false)];
+    iterCol = (1:maxItr)';
 
-        % == Loop over problems ==
-        for iFunction = 1:nFunction
-            % Optional skip (as in your original code)
-            if cecName == 3 && iFunction == 2
-                continue;
-            end
+    for a = 1:numAlgs
+        rawData = nan(maxItr, nFunction);
 
-            M = benchmarkResults{iAlgorithm, iFunction};
-            if isempty(M), continue; end
+        for f = 1:nFunction
+            if isempty(benchmarkResults{a,f}) || shouldSkip(cecName,f), continue; end
+            M = benchmarkResults{a,f};
 
-            % دفاع در برابر ابعاد ناکامل
-            rFinal = min(size(M,1), maxItr);
-            cMin   = maxRun + 1;
-            cMean  = maxRun + 2;
-            cMax   = maxRun + 3;
-            cStd   = maxRun + 4;
-
-            baseRow = 1 + (iFunction-1)*4;
-            if size(M,2) >= cMin,  tableConclusion{baseRow+1, iAlgorithm+2} = M(rFinal, cMin);  end
-            if size(M,2) >= cMean, tableConclusion{baseRow+2, iAlgorithm+2} = M(rFinal, cMean); end
-            if size(M,2) >= cMax,  tableConclusion{baseRow+3, iAlgorithm+2} = M(rFinal, cMax);  end
-            if size(M,2) >= cStd,  tableConclusion{baseRow+4, iAlgorithm+2} = M(rFinal, cStd);  end
-
-            rExtra = maxItr + 1;
-            if size(M,1) >= rExtra
-                outputResults{iFunction,1} = M(rExtra, :);
-            else
-                outputResults{iFunction,1} = [];
+            % take the "Min" curve over runs per iteration (col maxRun+1)
+            colBest = maxRun + 1;
+            rMax = min(maxItr, size(M,1));
+            if size(M,2) >= colBest
+                rawData(1:rMax, f) = M(1:rMax, colBest);
             end
         end
 
-        % ذخیره‌ی خروجی هر الگوریتم (دقیقاً مثل ساختار قبلی؛ فقط مسیر portable شده)
-        sheetName = algorithmsName{iAlgorithm};
-        Saving(resultsHeader, algoDir, [fileName '_' sheetName], fileFormat, sheetName, 'A1');
-        Saving(outputResults, algoDir, [fileName '_' sheetName], fileFormat, sheetName, 'B1');
+        fullData = [iterCol, rawData];
+
+        sheetName = sanitizeSheetName(algorithmNames{a});
+        algFile   = sprintf('%s_%s', baseName, sheetName);
+
+        Saving(headers,   algoDir, algFile, fileFormat, sheetName, 'A1');
+        Saving(fullData,  algoDir, algFile, fileFormat, sheetName, 'A2');
+    end
+end
+
+%% ===== helpers (copy/paste safe) =====
+function tag = dimTagFromInput(dimVal)
+    if isempty(dimVal)
+        tag = 'fixDim';
+        return;
     end
 
-    % == Save Conclusions workbook ==
-    % آدرس پوشه جمع‌بندی: .../results/Real World Problems/
-    Saving(tableConclusion, resultsDir, fileName, fileFormat, 'Conclusions', 'A2');
+    % If your dim comes as {'fixDim', []}
+    if iscell(dimVal) && ~isempty(dimVal)
+        try
+            s0 = string(dimVal{1});
+            if lower(strtrim(s0)) == "fixdim" || lower(strtrim(s0)) == "fix"
+                tag = 'fixDim';
+                return;
+            end
+        catch
+        end
+    end
 
-    % پاک‌سازی حداقلی (فقط متغیرهای تعریف‌شده در همین تابع)
-    clear resultsHeader outputResults M;
+    if isnumeric(dimVal)
+        if dimVal == 0
+            tag = 'fixDim';
+        else
+            tag = sprintf('%dDim', dimVal);
+        end
+        return;
+    end
+
+    s = lower(strtrim(string(dimVal)));
+
+    if s == "fix" || s == "fixdim"
+        tag = 'fixDim';
+    elseif endsWith(s, "dim")
+        tag = char(s);
+    else
+        tag = char(s + "Dim");
+    end
+end
+
+function s = sanitizeSheetName(s)
+    s = char(string(s));
+    s = regexprep(s, '[:\\/?*\[\]]', '_'); % invalid in Excel sheet names
+    if numel(s) > 31
+        s = s(1:31);
+    end
+    if isempty(s)
+        s = 'Sheet1';
+    end
 end
