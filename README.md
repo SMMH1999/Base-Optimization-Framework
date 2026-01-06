@@ -6,9 +6,12 @@ This repository is maintained as part of my **research work** in metaheuristic o
 **Affiliation:** _[Your University / Lab / Research Group]_  
 
 ### Contact & Communication
-- **Email:** _[your.email@example.com]_  
-- **GitHub:** _[https://github.com/your-username]_  
-- **LinkedIn / ResearchGate / Website:** _[optional links]_  
+- **Email:** _osonhast@gmail.com_  
+- **GitHub:** _https://github.com/SMMH1999_  
+- **LinkedIn:** _https://www.linkedin.com/in/smmh1999/_
+- **ResearchGate:** _https://www.researchgate.net/profile/Seyed-Hashemi-35_
+- **ORCID:** _https://orcid.org/0009-0000-0855-7856_
+- **Website:** _[optional links]_  
 
 If you use this repository in your research or want to collaborate, feel free to reach out.
 
@@ -70,15 +73,11 @@ ensureAlgorithmsSubmodule
 
 ## How to Run (Basic Usage)
 
-### Single‑objective CEC benchmarks
+### Single‑objective CEC benchmarks and Real‑world/engineering problems
 ```matlab
 main
 ```
 
-### Real‑world/engineering problems
-```matlab
-mainRW
-```
 
 The experiment settings (dimensions, number of runs, algorithms list, etc.) are configured in the scripts under `src/` and the metadata files in `prerequisites/`.
 
