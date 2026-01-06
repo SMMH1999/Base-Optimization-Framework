@@ -10,7 +10,6 @@ cd(basePath);
 algDir = fullfile(basePath, 'optimization algorithms');
 ensureAlgorithmsSubmodule(basePath, algDir, 14); % 14 days threshold
 
-
 addedPaths = genpath(basePath);
 addpath(addedPaths);
 
@@ -26,7 +25,7 @@ global RUN_PARALLEL;
 RUN_PARALLEL = true;   % <<< set to false to disable parallel mode
 
 % Parameters
-maxRun = 4;          % Number of independent runs for each algorithm
+maxRun = 30;          % Number of independent runs for each algorithm
 maxItr = 500;        % Maximum number of iterations
 populationNo = 30;   % Population size for algorithms
 

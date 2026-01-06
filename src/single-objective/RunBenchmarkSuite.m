@@ -9,9 +9,9 @@ function RunBenchmarkSuite(CEC_Index, populationNo, maxRun, maxItr, CECsDim)
 
     [costFunction, costFunctionDetails, nFunction] = Load_CEC_Function(CEC_Index);
 
-% Pre-detect benchmark families
+    % Pre-detect benchmark families
     % isRW = strcmp(func2str(costFunctionDetails), 'RW_Function');
-    
+
 
 
     %% Load algorithms list
@@ -171,7 +171,7 @@ function RunBenchmarkSuite(CEC_Index, populationNo, maxRun, maxItr, CECsDim)
 
         % Save FE logs into the versioned results folder
         ctx = ProjectContext('get');
-        resultsDir = fullfile(ctx.resultsRoot, ['CEC' char(string(CECNames(CEC_Index)))]);
+        resultsDir = fullfile(ctx.resultsRoot, [char(string(CECNames(CEC_Index)))]);
         if exist(resultsDir,'dir')~=7, mkdir(resultsDir); end
         algDir = fullfile(resultsDir, 'algorithms');
         if exist(algDir,'dir')~=7, mkdir(algDir); end
