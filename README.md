@@ -1,4 +1,4 @@
-# Metaheuristic Optimization Benchmarking Framework (MATLAB)
+# Meta-heuristic Optimization Benchmarking Framework (MATLAB)
 
 ## Who am I?
 This repository is maintained as part of my **research work** in meta-heuristic optimization.  
@@ -17,7 +17,7 @@ If you use this repository in your research or want to collaborate, feel free to
 ---
 
 ## Project Goal (Research-Oriented)
-This project provides a **modular MATLAB framework** for **benchmarking metaheuristic optimization algorithms** on common **CEC benchmark suites** and **real‑world/engineering problems**.  
+This project provides a **modular MATLAB framework** for **benchmarking meta-heuristic optimization algorithms** on common **CEC benchmark suites** and **real‑world/engineering problems**.  
 It is intended as a **research tool** to compare algorithm performance in a standardized and reproducible way.
 
 ---
