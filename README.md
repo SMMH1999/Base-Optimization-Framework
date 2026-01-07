@@ -1,9 +1,9 @@
 # Metaheuristic Optimization Benchmarking Framework (MATLAB)
 
 ## Who am I?
-This repository is maintained as part of my **research work** in metaheuristic optimization.  
-**Name:** _[Your Name]_  
-**Affiliation:** _[Your University / Lab / Research Group]_  
+This repository is maintained as part of my **research work** in meta-heuristic optimization.  
+- **Name:** _Seyed Mohammad Mahdi Hashemi_  
+- **Affiliation:** _Graduate University of Advanced Technology, Kerman, Iran_  
 
 ### Contact & Communication
 - **Email:** _osonhast@gmail.com_  
@@ -11,7 +11,6 @@ This repository is maintained as part of my **research work** in metaheuristic o
 - **LinkedIn:** _https://www.linkedin.com/in/smmh1999/_
 - **ResearchGate:** _https://www.researchgate.net/profile/Seyed-Hashemi-35_
 - **ORCID:** _https://orcid.org/0009-0000-0855-7856_
-- **Website:** _[optional links]_  
 
 If you use this repository in your research or want to collaborate, feel free to reach out.
 
@@ -52,8 +51,8 @@ This is **not a deep dive into every file**—the goal here is to explain the ov
 
 ### 1) Clone with submodules (recommended)
 ```bash
-git clone --recurse-submodules <REPO_URL>
-cd <REPO_FOLDER>
+git clone --recurse-submodules https://github.com/SMMH1999/Base-Optimization-Framework
+cd Base-Optimization-Framework
 ```
 
 If you already cloned without submodules:
@@ -130,11 +129,11 @@ The objective is passed to algorithms as a function handle.
 It expects **x** in shape **Dim × N** or **1 × Dim** and returns a fitness value.
 
 Typical calls:
-- **CEC 2014+ style**:
+- **Single**:
   ```matlab
-  f = objectiveFunction(x, functionNo);
+  f(i) = objectiveFunction(x(i));
   ```
-- **CEC 2005 style**:
+- **Batch**:
   ```matlab
   f = objectiveFunction(x);
   ```
