@@ -1,7 +1,7 @@
-توابع ارزیابی\توابع تجربی و ریاضی\CEC 2005
-توابع ارزیابی\توابع تجربی و ریاضی\CEC 2014
-توابع ارزیابی\توابع تجربی و ریاضی\CEC 2017
-توابع ارزیابی\توابع تجربی و ریاضی\CEC 2019
-توابع ارزیابی\توابع تجربی و ریاضی\CEC 2020
-توابع ارزیابی\توابع تجربی و ریاضی\CEC 2022
-توابع ارزیابی\توابع دنیای واقعی و مهندسی\Engineering Problems
+benchmarks\Single-objective Problems\CEC 2005
+benchmarks\Single-objective Problems\CEC 2014
+benchmarks\Single-objective Problems\CEC 2017
+benchmarks\Single-objective Problems\CEC 2019
+benchmarks\Single-objective Problems\CEC 2020
+benchmarks\Single-objective Problems\CEC 2022
+benchmarks\Engineering Problems\Problem Set1

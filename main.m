@@ -25,7 +25,7 @@ global RUN_PARALLEL;
 RUN_PARALLEL = false;   % <<< set to false to disable parallel mode
 
 % Parameters
-maxRun = 3;          % Number of independent runs for each algorithm
+maxRun = 30;          % Number of independent runs for each algorithm
 maxItr = 500;        % Maximum number of iterations
 populationNo = 30;   % Population size for algorithms
 
@@ -57,7 +57,7 @@ CECsDim = { ...
 
 
 % Select which benchmark indices to run
-selectedIndex = 6:6;
+selectedIndex = 1:7;
 
 %% Main execution loop
 for index = selectedIndex
