@@ -123,7 +123,9 @@ function RunBenchmarkSuite(CEC_Index, populationNo, maxRun, maxItr, CECsDim)
 
                 else
                     %% ===== No =====
+                    baseSeed = 1000000 * CEC_Index + 10000 * Dim + 100 * functionNo + algorithmNo;
                     for run = 1:maxRun
+                        rng(baseSeed + run, "twister");
                         fprintf('Mode:SERIAL | CEC:%s | Dim:%d | F%d | Alg:%s | Run:%d\n', ...
                             CECNames(CEC_Index), Dim, functionNo, string(algorithmName), run);
 

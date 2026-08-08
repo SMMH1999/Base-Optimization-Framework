@@ -1,199 +1,233 @@
-function [] = Conclusion(benchmarkResults, maxItr, maxRun, algorithmFileAddress, nFunction, cecName, dim)
-    % CONCLUSION
-    % This function processes benchmark optimization results, generates
-    % summary statistics, performs statistical tests, and saves all outputs
-    % into structured Excel files.
-    %
-    % Inputs:
-    %   benchmarkResults     : Cell array with results for each algorithm/function
-    %   maxItr               : Max number of iterations
-    %   maxRun               : Number of independent runs per function
-    %   algorithmFileAddress : File path to algorithm definitions
-    %   nFunction            : Number of benchmark functions
-    %   cecName              : Index for CEC benchmark year
-    %   dim                  : Dimensionality of the benchmark problem
+function []=Conclusion(benchmarkResults,maxItr,maxRun,algorithmFileAddress,nFunction,cecName,dim)
+%CONCLUSION Save benchmark and statistical results into the copied template.
 
-    %% === Configuration ===
-    cecNames  = ["2005","2014","2017","2019","2020","2022"];
-    cecLabel  = char(cecNames(cecName)); % Selected CEC benchmark name
+%% Configuration
+cecNames=["2005","2014","2017","2019","2020","2022"];
+cecLabel=char(cecNames(cecName));
+[algorithmNames,~]=Get_algorithm(algorithmFileAddress);
+algorithmNames=string(algorithmNames(:));
+numAlgs=numel(algorithmNames);
 
-    % Load algorithm names from the given file
-    [algorithmNames, ~] = Get_algorithm(algorithmFileAddress);
-    numAlgs = numel(algorithmNames);
+ctx=ProjectContext('get');
+resultsDir=fullfile(ctx.resultsRoot,['CEC' cecLabel]);
+algoDir=fullfile(resultsDir,'algorithms');
 
-    % Define directory paths for results (versioned, centralized)
-    ctx = ProjectContext('get');
-    resultsDir = fullfile(ctx.resultsRoot, ['CEC' cecLabel]);
-    algoDir    = fullfile(resultsDir, 'algorithms');
-
-    % Ensure directories exist
-    if ~exist(resultsDir,'dir'), mkdir(resultsDir); end
-    if ~exist(algoDir,'dir'), mkdir(algoDir); end
-
-    % File naming settings
-    fileFormat = 'xlsx';
-    baseName   = dimTagFromInput(dim);  % e.g., '10Dim' or 'fixDim'
-
-    % Skip rule for specific cases
-    shouldSkip = @(cecNameVal, fIdx) (cecNameVal==3 && fIdx==2);
-
-    %% === Step 1: Correct results if below minimum threshold ===
-    benchmarkResultsFixed = benchmarkResults; % Copy original results
-    for a = 1:numAlgs
-        for f = 1:nFunction
-            if isempty(benchmarkResults{a,f}) || shouldSkip(cecName, f)
-                continue; % Skip empty or excluded function results
-            end
-            M = benchmarkResults{a,f};
-            % Fix last iteration values per run
-            if size(M,1) >= maxItr && size(M,2) >= maxRun
-                for r = 1:maxRun
-                    M(maxItr, r) = FixIfBelowFmin(M(maxItr, r), f, cecName);
-                end
-            end
-            % Fix mean column if present
-            if size(M,2) >= maxRun+2
-                M(maxItr, maxRun+1) = FixIfBelowFmin(M(maxItr, maxRun+1), f, cecName);
-            end
-            benchmarkResultsFixed{a,f} = M;
-        end
-    end
-
-    %% === Step 2: Create summary table ===
-    summaryTable = cell(nFunction*3+1, numAlgs+2);
-    summaryTable(1,3:end) = cellstr(algorithmNames)'; % Algorithm headers
-
-    for f = 1:nFunction
-        row = (f-1)*3 + 2; % Row index for function block
-        summaryTable(row:row+2,1) = {sprintf('F%d',f)}; % Function labels
-        summaryTable(row:row+2,2) = {'Mean','Std','CPU'}; % Metric labels
-
-        for a = 1:numAlgs
-            if isempty(benchmarkResultsFixed{a,f}) || shouldSkip(cecName, f)
-                continue; % Skip invalid cases
-            end
-            dataMat = benchmarkResultsFixed{a,f};
-            % Extract statistics for this function/algorithm
-            summaryTable{row,   a+2} = dataMat(maxItr,   maxRun+1); % Mean
-            summaryTable{row+1, a+2} = dataMat(maxItr,   maxRun+2); % Std
-            summaryTable{row+2, a+2} = dataMat(maxItr+1, maxRun+1); % CPU time
-        end
-    end
-    Saving(summaryTable, resultsDir, baseName, fileFormat, 'Conclusions', 'B2');
-
-    %% === Step 3: Save raw iteration-wise results ===
-    for a = 1:numAlgs
-        rawData = nan(maxItr, nFunction);
-        for f = 1:nFunction
-            if isempty(benchmarkResultsFixed{a,f}) || shouldSkip(cecName, f)
-                continue;
-            end
-            % Best value per iteration
-            rawData(:,f) = benchmarkResultsFixed{a,f}(1:maxItr, maxRun+1);
-        end
-        % Prepare iteration column and headers
-        headers    = [{'Iteration'}, arrayfun(@(x) sprintf('F%d',x),1:nFunction,'UniformOutput',false)];
-        iterColumn = (1:maxItr)';
-        fullData   = [iterColumn, rawData];
-
-        sheetName = algorithmNames{a};
-        algFile   = sprintf('%s_%s', baseName, sheetName);
-        % Save headers and data to file
-        Saving(headers, algoDir, algFile, fileFormat, sheetName, 'A1');
-        Saving(fullData, algoDir, algFile, fileFormat, sheetName, 'A2');
-    end
-
-    %% === Step 4: Perform statistical tests ===
-    refAlg   = 1; % Reference algorithm index
-    compAlgs = 2:numAlgs; % Algorithms to compare against
-    funNames = arrayfun(@(f) sprintf('F%d',f), 1:nFunction, 'UniformOutput', false)';
-
-    % --- Paired T-Test ---
-    [pMat, hMat] = deal(nan(nFunction, numel(compAlgs)));
-    for idx = 1:numel(compAlgs)
-        j = compAlgs(idx);
-        for f = 1:nFunction
-            if isempty(benchmarkResultsFixed{refAlg,f}) || isempty(benchmarkResultsFixed{j,f})
-                continue;
-            end
-            % Extract data for t-test
-            x1 = benchmarkResultsFixed{refAlg,f}(maxItr,1:maxRun);
-            x2 = benchmarkResultsFixed{j,f}(maxItr,1:maxRun);
-            [h,p] = ttest(x1,x2,'Alpha',0.05);
-            pMat(f,idx) = p; hMat(f,idx) = h;
-        end
-    end
-    colNames = arrayfun(@(j) sprintf('%s vs %s',algorithmNames{refAlg},algorithmNames{j}), compAlgs, 'UniformOutput', false);
-    saveStatTable(pMat, colNames, funNames, resultsDir, baseName, fileFormat, 'TTest_p');
-    saveStatTable(hMat, colNames, funNames, resultsDir, baseName, fileFormat, 'TTest_h');
-
-    % --- Wilcoxon signed-rank test ---
-    [pWMat, hWMat, statMat] = deal(nan(nFunction, numel(compAlgs)));
-    for idx = 1:numel(compAlgs)
-        j = compAlgs(idx);
-        for f = 1:nFunction
-            if isempty(benchmarkResultsFixed{refAlg,f}) || isempty(benchmarkResultsFixed{j,f})
-                continue;
-            end
-            % Extract data for Wilcoxon test
-            x1 = benchmarkResultsFixed{refAlg,f}(maxItr,1:maxRun);
-            x2 = benchmarkResultsFixed{j,f}(maxItr,1:maxRun);
-            [pW,hW,stW] = signrank(x1,x2,'alpha',0.05);
-            pWMat(f,idx) = pW; hWMat(f,idx) = hW; statMat(f,idx) = stW.signedrank;
-        end
-    end
-    saveStatTable(pWMat,  colNames, funNames, resultsDir, baseName, fileFormat, 'Wilcoxon_p');
-    saveStatTable(hWMat,  colNames, funNames, resultsDir, baseName, fileFormat, 'Wilcoxon_h');
-    saveStatTable(statMat,colNames, funNames, resultsDir, baseName, fileFormat, 'Wilcoxon_stat');
-
-    %% === Step 5: Save explanation sheet ===
-    expl = {
-        "Conclusions: Mean, Std, CPU per function and algorithm";
-        "Raw data: per-algorithm time series in separate files";
-        "TTest_p: p-values of paired t-test (first vs others)";
-        "TTest_h: hReject flags of paired t-test";
-        "Wilcoxon_p/h/stat: p-values, hFlags, and signed-rank stats";
-        };
-    Saving(expl, resultsDir, baseName, fileFormat, 'Explanation', 'A1');
+if exist(algoDir,'dir')~=7
+    mkdir(algoDir);
 end
 
-%% === Helper function to save statistical tables ===
-function saveStatTable(dataMatrix, colNames, funNames, resultsDir, baseName, fileFormat, sheetName)
-    % Convert matrix to table with function names and variable names
-    T = array2table(dataMatrix, 'VariableNames', colNames);
-    T = addvars(T, funNames, 'Before',1,'NewVariableNames','Function');
-    % Save the table to the specified sheet
-    Saving(T, resultsDir, baseName, fileFormat, sheetName, 'A2');
-end
-function tag = dimTagFromInput(dimVal)
-    %DIMTAGFROMINPUT Convert a dimension input to a standard dimension tag.
-    %   Examples:
-    %     10      -> '10Dim'
-    %     '10'    -> '10Dim'
-    %     '10Dim' -> '10Dim'
-    %     'fix'   -> 'fixDim'
-    %     0       -> 'fixDim'   (useful when some suites use fixed dimension)
-    %
-    % This helper is meant to be placed on the MATLAB path (e.g., src/single-objective)
-    % so legacy functions can call it without changing their signatures.
+fileFormat='xlsx';
+baseName=dimTagFromInput(dim);
+layout=getTemplateLayout(nFunction);
+workbookPath=fullfile(resultsDir,[baseName '.' fileFormat]);
+shouldSkip=@(cecIndex,functionIndex) cecIndex==3 && functionIndex==2;
 
-    if isnumeric(dimVal)
-        if isequal(dimVal, 0)
-            tag = 'fixDim';
+if exist(workbookPath,'file')~=2
+    error('Conclusion:TemplateNotFound', ...
+        'Copied result template was not found:\n%s',workbookPath);
+end
+
+if numAlgs>layout.algorithmCapacity
+    error('Conclusion:TemplateAlgorithmCapacityExceeded', ...
+        'Template capacity is %d algorithms, but %d were requested.', ...
+        layout.algorithmCapacity,numAlgs);
+end
+
+%% Correct final values below benchmark minima
+benchmarkResultsFixed=benchmarkResults;
+
+for algorithmIndex=1:numAlgs
+    for functionIndex=1:nFunction
+        if isempty(benchmarkResults{algorithmIndex,functionIndex}) || ...
+                shouldSkip(cecName,functionIndex)
+            continue;
+        end
+
+        dataMatrix=benchmarkResults{algorithmIndex,functionIndex};
+
+        if size(dataMatrix,1)>=maxItr && size(dataMatrix,2)>=maxRun
+            for runIndex=1:maxRun
+                dataMatrix(maxItr,runIndex)=FixIfBelowFmin( ...
+                    dataMatrix(maxItr,runIndex),functionIndex,cecName);
+            end
+        end
+
+        benchmarkResultsFixed{algorithmIndex,functionIndex}=dataMatrix;
+    end
+end
+
+%% Save Conclusions values into the existing template
+summaryValues=nan(nFunction*3,numAlgs);
+
+for functionIndex=1:nFunction
+    if shouldSkip(cecName,functionIndex)
+        continue;
+    end
+
+    outputRow=(functionIndex-1)*3+1;
+
+    for algorithmIndex=1:numAlgs
+        if isempty(benchmarkResultsFixed{algorithmIndex,functionIndex})
+            continue;
+        end
+
+        dataMatrix=benchmarkResultsFixed{algorithmIndex,functionIndex};
+        if size(dataMatrix,1)<maxItr+1 || size(dataMatrix,2)<maxRun
+            continue;
+        end
+
+        finalValues=dataMatrix(maxItr,1:maxRun);
+        cpuValues=dataMatrix(maxItr+1,1:maxRun);
+
+        summaryValues(outputRow,algorithmIndex)=mean(finalValues,'omitnan');
+        summaryValues(outputRow+1,algorithmIndex)=std(finalValues,0,'omitnan');
+        summaryValues(outputRow+2,algorithmIndex)=mean(cpuValues,'omitnan');
+    end
+end
+
+config=statisticalConfig('get');
+[bestFunctionCount,overallRank]=calculateAggregateRanking( ...
+    benchmarkResultsFixed,maxItr,maxRun,nFunction,numAlgs,cecName,config);
+
+fprintf('  Saving formatted results... ');
+saveTimer=tic;
+
+% Same storage model as the original framework: write only dynamic ranges
+% into the template copy created by ProjectContext.
+Saving(cellstr(algorithmNames)',resultsDir,baseName,fileFormat, ...
+    'Conclusions',layout.algorithmHeaderCell);
+Saving(summaryValues,resultsDir,baseName,fileFormat, ...
+    'Conclusions',layout.summaryStartCell);
+Saving([bestFunctionCount;overallRank],resultsDir,baseName,fileFormat, ...
+    'Conclusions',layout.aggregateStartCell);
+
+if config.enabled
+    statisticalAnalysis( ...
+        benchmarkResultsFixed,maxItr,maxRun,algorithmNames,nFunction, ...
+        cecLabel,baseName,resultsDir,fileFormat);
+end
+
+fprintf('done (%.2f s).\n',toc(saveTimer));
+
+%% Save mean convergence curves to separate algorithm files
+for algorithmIndex=1:numAlgs
+    rawData=nan(maxItr,nFunction);
+
+    for functionIndex=1:nFunction
+        if isempty(benchmarkResultsFixed{algorithmIndex,functionIndex}) || ...
+                shouldSkip(cecName,functionIndex)
+            continue;
+        end
+
+        dataMatrix=benchmarkResultsFixed{algorithmIndex,functionIndex};
+        if size(dataMatrix,1)<maxItr || size(dataMatrix,2)<maxRun
+            continue;
+        end
+
+        rawData(:,functionIndex)=mean( ...
+            dataMatrix(1:maxItr,1:maxRun),2,'omitnan');
+    end
+
+    headers=[{'Iteration'},arrayfun( ...
+        @(x) sprintf('F%d',x),1:nFunction,'UniformOutput',false)];
+    fullData=[(1:maxItr)',rawData];
+
+    sheetName=char(algorithmNames(algorithmIndex));
+    algorithmFile=sprintf('%s_%s',baseName,sheetName);
+
+    Saving(headers,algoDir,algorithmFile,fileFormat,sheetName,'A1');
+    Saving(fullData,algoDir,algorithmFile,fileFormat,sheetName,'A2');
+end
+end
+
+function layout=getTemplateLayout(nFunction)
+layout.algorithmCapacity=15;
+layout.algorithmHeaderCell='D2';
+layout.summaryStartCell='D3';
+layout.aggregateStartRow=nFunction*3+3;
+layout.aggregateStartCell=sprintf('D%d',layout.aggregateStartRow);
+end
+
+function [bestFunctionCount,overallRank]=calculateAggregateRanking( ...
+    benchmarkResults,maxItr,maxRun,nFunction,numAlgs,cecName,config)
+performanceMatrix=nan(nFunction,numAlgs);
+rankMatrix=nan(nFunction,numAlgs);
+validFunction=false(nFunction,1);
+
+for functionIndex=1:nFunction
+    if cecName==3 && functionIndex==2
+        continue;
+    end
+
+    complete=true;
+
+    for algorithmIndex=1:numAlgs
+        if isempty(benchmarkResults{algorithmIndex,functionIndex})
+            complete=false;
+            break;
+        end
+
+        dataMatrix=benchmarkResults{algorithmIndex,functionIndex};
+        if size(dataMatrix,1)<maxItr || size(dataMatrix,2)<maxRun
+            complete=false;
+            break;
+        end
+
+        values=dataMatrix(maxItr,1:maxRun);
+        values=values(isfinite(values));
+
+        if isempty(values)
+            complete=false;
+            break;
+        end
+
+        if lower(string(config.rankingMetric))=="median"
+            performanceMatrix(functionIndex,algorithmIndex)=median(values);
         else
-            tag = sprintf('%dDim', double(dimVal));
+            performanceMatrix(functionIndex,algorithmIndex)=mean(values);
         end
-        return;
     end
 
-    s = lower(string(dimVal));
-    s = strtrim(s);
+    if ~complete || ~all(isfinite(performanceMatrix(functionIndex,:)))
+        continue;
+    end
 
-    if s == "fix" || s == "fixdim"
-        tag = 'fixDim';
-    elseif endsWith(s, "dim")
-        tag = char(s);
+    validFunction(functionIndex)=true;
+
+    if lower(string(config.performanceDirection))=="max"
+        rankMatrix(functionIndex,:)=tiedrank(-performanceMatrix(functionIndex,:));
     else
-        tag = char(s + "Dim");
+        rankMatrix(functionIndex,:)=tiedrank(performanceMatrix(functionIndex,:));
     end
+end
+
+bestFunctionCount=sum(rankMatrix==1,1);
+
+if any(validFunction)
+    averageRank=mean(rankMatrix(validFunction,:),1,'omitnan');
+    overallRank=tiedrank(averageRank);
+else
+    overallRank=nan(1,numAlgs);
+end
+end
+
+function tag=dimTagFromInput(dimVal)
+if isnumeric(dimVal)
+    if isequal(dimVal,0)
+        tag='fixDim';
+    else
+        tag=sprintf('%dDim',double(dimVal));
+    end
+    return;
+end
+
+value=lower(strtrim(string(dimVal)));
+
+if value=="fix" || value=="fixdim"
+    tag='fixDim';
+elseif endsWith(value,"dim")
+    tag=char(value);
+else
+    tag=char(value+"Dim");
+end
 end
