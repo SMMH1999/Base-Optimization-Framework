@@ -35,8 +35,11 @@ function [] = Ploting(benchmarkResults, maxItr, maxRun, algorithmFileAddress, ce
     subplotCols    = 4; % Number of subplot columns per figure
     plotsPerFigure = subplotRows * subplotCols; % Total plots per figure
     figureCounter  = 1; % Tracks figure numbering
-    plotHandles    = []; % Stores plot handles for legend
-    legendEntries  = algorithmsName; % Legend labels
+    plotHandles       = []; % Stores plot handles for legend
+    legendEntries     = algorithmsName; % Legend labels
+    insetIterationCount = 5; % Number of final iterations shown in the zoom inset
+    overlapTolerance = 0.08; % Endpoint distance considered visually indistinguishable on the main axis
+    logScaleThreshold = 1e3; % Minimum positive dynamic range for logarithmic scaling
 
     %% Plotting Loop
     totalFuncs = size(benchmarkResults, 2); % Number of benchmark functions
@@ -64,13 +67,24 @@ function [] = Ploting(benchmarkResults, maxItr, maxRun, algorithmFileAddress, ce
             end
 
             % Create subplot for current function
-            subplot(subplotRows, subplotCols, mod(adjIdx-1, plotsPerFigure) + 1);
-            hold on;
+            subplotIndex = mod(adjIdx-1, plotsPerFigure) + 1;
+            mainAx = subplot(subplotRows, subplotCols, subplotIndex);
+            hold(mainAx, 'on');
+
+            % Collect mean curves before plotting to determine a suitable y-axis scale
+            algorithmCount = size(benchmarkResults, 1);
+            meanCurves = nan(maxItr, algorithmCount);
+            for alg = 1:algorithmCount
+                dataMat = tableResult{alg};
+                meanCurves(:, alg) = dataMat(1:maxItr, maxRun+1);
+            end
+
+            useLogScale = shouldUseLogScale(meanCurves, logScaleThreshold);
+            currentHandles = [];
 
             % Plot results for each algorithm
-            for alg = 1:size(benchmarkResults, 1)
-                dataMat   = tableResult{alg}; % Matrix of results for current algorithm
-                meanCurve = dataMat(1:maxItr, maxRun+1); % Mean performance curve
+            for alg = 1:algorithmCount
+                meanCurve = meanCurves(:, alg);
 
                 % Line style: algorithms >= 8 use dashed-dot lines
                 if alg >= 8
@@ -79,13 +93,19 @@ function [] = Ploting(benchmarkResults, maxItr, maxRun, algorithmFileAddress, ce
                     style = '-';
                 end
 
-                % Plot curve using semilogarithmic y-axis
-                h = semilogy(1:maxItr, meanCurve, 'LineStyle', style, 'LineWidth', 1);
+                h = plot(mainAx, 1:maxItr, meanCurve, 'LineStyle', style, 'LineWidth', 1);
+                currentHandles(end+1) = h; %#ok<AGROW>
 
-                % Capture plot handle for legend in the first subplot of each figure
-                if adjIdx == 1
-                    plotHandles(end+1) = h;
+                % Capture plot handles from the first subplot of each figure
+                if subplotIndex == 1
+                    plotHandles(end+1) = h; %#ok<AGROW>
                 end
+            end
+
+            if useLogScale
+                set(mainAx, 'YScale', 'log');
+            else
+                set(mainAx, 'YScale', 'linear');
             end
 
             % Set subplot title and axis labels
@@ -95,10 +115,13 @@ function [] = Ploting(benchmarkResults, maxItr, maxRun, algorithmFileAddress, ce
             %
             %
 
-            title(sprintf('CEC%s - F%d', cecNames(cecName), funcIdx));
-            xlabel('Iteration');
-            ylabel('Fitness');
-            hold off;
+            title(mainAx, sprintf('CEC%s - F%d', cecNames(cecName), funcIdx));
+            xlabel(mainAx, 'Iteration');
+            ylabel(mainAx, 'Fitness');
+            hold(mainAx, 'off');
+
+            % Zoom only the terminal group that is visually indistinguishable on the main axes
+            addOverlapInset(mainAx, meanCurves, currentHandles, maxItr, insetIterationCount, overlapTolerance);
         end
     end
 
@@ -134,6 +157,155 @@ end
 
 
 % ===== Helper functions =====
+function tf = shouldUseLogScale(curveData, dynamicRangeThreshold)
+%SHOULDUSELOGSCALE Select log scale only for strictly positive wide-range data.
+    values = curveData(isfinite(curveData));
+
+    if isempty(values) || any(values <= 0)
+        tf = false;
+        return;
+    end
+
+    minValue = min(values);
+    maxValue = max(values);
+    tf = (maxValue / minValue) >= dynamicRangeThreshold;
+end
+
+function addOverlapInset(mainAx, curveData, lineHandles, maxItr, iterationCount, overlapTolerance)
+%ADDOVERLAPINSET Zoom the terminal cluster that overlaps visually on the main axes.
+    if maxItr < 1 || isempty(curveData) || isempty(lineHandles)
+        return;
+    end
+
+    selectedAlgorithms = findTerminalOverlap(mainAx, curveData, overlapTolerance);
+    if numel(selectedAlgorithms) < 2
+        return;
+    end
+
+    tailStart = max(1, maxItr-iterationCount+1);
+    tailX = tailStart:maxItr;
+    tailData = curveData(tailX, selectedAlgorithms);
+
+    originalUnits = get(mainAx, 'Units');
+    set(mainAx, 'Units', 'normalized');
+    mainPosition = get(mainAx, 'Position');
+    set(mainAx, 'Units', originalUnits);
+
+    insetPosition = [mainPosition(1)+0.54*mainPosition(3), ...
+        mainPosition(2)+0.53*mainPosition(4), ...
+        0.42*mainPosition(3), 0.39*mainPosition(4)];
+
+    parentFigure = ancestor(mainAx, 'figure');
+    insetAx = axes('Parent', parentFigure, 'Units', 'normalized', ...
+        'Position', insetPosition, 'Box', 'on', 'FontSize', 5, 'LineWidth', 0.6);
+    hold(insetAx, 'on');
+
+    for idx = 1:numel(selectedAlgorithms)
+        alg = selectedAlgorithms(idx);
+        lineColor = get(lineHandles(alg), 'Color');
+        lineStyle = get(lineHandles(alg), 'LineStyle');
+        plot(insetAx, tailX, tailData(:, idx), ...
+            'Color', lineColor, ...
+            'LineStyle', lineStyle, ...
+            'LineWidth', 1);
+    end
+
+    set(insetAx, 'YScale', 'linear', 'XTick', tailX);
+    xlim(insetAx, tailXLimits(tailStart, maxItr));
+    setTightYLimits(insetAx, tailData);
+    title(insetAx, 'Final overlap', 'FontSize', 6);
+    hold(insetAx, 'off');
+end
+
+function selectedAlgorithms = findTerminalOverlap(mainAx, curveData, overlapTolerance)
+%FINDTERMINALOVERLAP Find the densest visually indistinguishable endpoint cluster.
+    finalValues = curveData(end, :);
+    finiteMask = isfinite(finalValues);
+    selectedAlgorithms = [];
+
+    if nnz(finiteMask) < 2
+        return;
+    end
+
+    yScale = get(mainAx, 'YScale');
+    yLimits = get(mainAx, 'YLim');
+
+    if strcmpi(yScale, 'log')
+        finiteMask = finiteMask & finalValues > 0;
+        if nnz(finiteMask) < 2 || any(yLimits <= 0)
+            return;
+        end
+        displayValues = log10(finalValues);
+        displayLimits = log10(yLimits);
+    else
+        displayValues = finalValues;
+        displayLimits = yLimits;
+    end
+
+    axisSpan = displayLimits(2)-displayLimits(1);
+    if ~isfinite(axisSpan) || axisSpan <= 0
+        return;
+    end
+
+    validAlgorithms = find(finiteMask);
+    validValues = displayValues(finiteMask);
+    normalizedValues = (validValues-displayLimits(1)) ./ axisSpan;
+    [sortedValues, order] = sort(normalizedValues);
+
+    bestStart = 1;
+    bestEnd = 1;
+    bestCount = 1;
+    bestMean = inf;
+    left = 1;
+
+    for right = 1:numel(sortedValues)
+        while sortedValues(right)-sortedValues(left) > overlapTolerance
+            left = left + 1;
+        end
+
+        currentCount = right-left+1;
+        currentMean = mean(sortedValues(left:right));
+        if currentCount > bestCount || (currentCount == bestCount && currentMean < bestMean)
+            bestStart = left;
+            bestEnd = right;
+            bestCount = currentCount;
+            bestMean = currentMean;
+        end
+    end
+
+    if bestCount >= 2
+        selectedAlgorithms = validAlgorithms(order(bestStart:bestEnd));
+    end
+end
+
+function limits = tailXLimits(tailStart, maxItr)
+%TAILXLIMITS Return valid x-axis limits for the tail inset.
+    if tailStart == maxItr
+        limits = [maxItr-0.5, maxItr+0.5];
+    else
+        limits = [tailStart, maxItr];
+    end
+end
+
+function setTightYLimits(ax, data)
+%SETTIGHTYLIMITS Apply padded linear limits using finite tail values only.
+    values = data(isfinite(data));
+    if isempty(values)
+        return;
+    end
+
+    minValue = min(values);
+    maxValue = max(values);
+
+    if minValue == maxValue
+        padding = max(0.05*abs(minValue), eps(max(abs(minValue), 1)));
+    else
+        padding = 0.08 * (maxValue-minValue);
+    end
+
+    ylim(ax, [minValue-padding, maxValue+padding]);
+end
+
 function tag = dimTagFromInput(dimVal)
 %DIMTAGFROMINPUT Normalize dimension tag for folder naming.
     if isnumeric(dimVal)
