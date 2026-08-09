@@ -25,8 +25,22 @@ statsConfig.performanceDirection = "min";
 statsConfig.rankingMetric = "mean";
 statsConfig.applyHolm = true;
 statsConfig.exportBoxplots = true;
+statsConfig.boxplotFunctions = [];
 statisticalConfig('set', statsConfig);
 
+%% Reference algorithm diagnostic configuration
+diagConfig = struct();
+diagConfig.enabled = true;
+diagConfig.cecIndex = 1;
+diagConfig.functionIndices = [1 5 8 9 11];
+diagConfig.runSelection = "median";
+diagConfig.validateReplay = true;
+diagConfig.saveReplayData = true;
+diagConfig.exportFigures = true;
+diagConfig.surfaceGridSize = 60;
+diagConfig.maxDisplayedPoints = 2500;
+diagConfig.maxCapturedEvaluations = 100000;
+referenceDiagnosticConfig('set', diagConfig);
 
 %% Parallel control
 global RUN_PARALLEL;

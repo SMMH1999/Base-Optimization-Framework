@@ -37,6 +37,8 @@ function config=defaultConfig()
     config.rankingMetric="mean";
     config.applyHolm=true;
     config.exportBoxplots=false;
+    config.boxplotCEC="2005";
+    config.boxplotFunctions=[];
 end
 
 function output=mergeConfig(defaults,inputConfig)

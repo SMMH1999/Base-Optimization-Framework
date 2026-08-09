@@ -178,6 +178,15 @@ function RunBenchmarkSuite(CEC_Index, populationNo, maxRun, maxItr, CECsDim)
         algDir = fullfile(resultsDir, 'algorithms');
         if exist(algDir,'dir')~=7, mkdir(algDir); end
         save(fullfile(algDir, feLogName), 'benchmarkFEs', 'benchmarkFEWarnItr', 'populationNo', 'maxItr', 'maxRun', 'CEC_Index', 'Dim');
+
+        %% Reference diagnostic phase
+        diagConfig=referenceDiagnosticConfig('get');
+        if diagConfig.enabled && CEC_Index==diagConfig.cecIndex
+            runReferenceDiagnostics( ...
+                benchmarkResults,maxItr,maxRun,populationNo, ...
+                costFunctionDetails,algorithms,algorithmsName, ...
+                DimOverride,CEC_Index,dim);
+        end
     end
 end
 
