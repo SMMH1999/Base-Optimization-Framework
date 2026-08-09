@@ -1,44 +1,53 @@
 %% Initialization
-clearvars;    % Clear only variables, not everything
-clc;          % Clear command window
+clearvars;
+clc;
 
 % Set the base path to the folder where this script is located
 basePath = fileparts(which('main.m'));
 cd(basePath);
 
-% --- Ensure algorithms submodule exists and is not stale ---
+% Ensure algorithms submodule exists and is not stale
 algDir = fullfile(basePath, 'optimization algorithms');
-ensureAlgorithmsSubmodule(basePath, algDir, 14); % 14 days threshold
+ensureAlgorithmsSubmodule(basePath, algDir, 14);        % 14 days threshold
 
 addedPaths = genpath(basePath);
 addpath(addedPaths);
 
-% Initialize versioned results context (creates results_YY-MM-DD HH-MM and snapshots templates)
+% Initialize versioned results context
 ProjectContext('init', basePath);
 
+%% Statistical analysis configuration
+statsConfig = struct();
+statsConfig.enabled = true;
+statsConfig.alpha = 0.05;
+statsConfig.referenceAlgorithm = 1;
+statsConfig.performanceDirection = "min";
+statsConfig.rankingMetric = "mean";
+statsConfig.applyHolm = true;
+statsConfig.exportBoxplots = true;
+statisticalConfig('set', statsConfig);
 
-%% ---------------- Parallel control (GLOBAL FLAG) ----------------
+
+%% Parallel control
+global RUN_PARALLEL;
+
+RUN_PARALLEL = false; % <<< set to false to disable parallel mode
 % Global switch:
 % true  -> enable parallel execution (parfor inside RunBenchmarkSuite)
 % false -> run everything serially
-global RUN_PARALLEL;
-RUN_PARALLEL = false;   % <<< set to false to disable parallel mode
 
-% Parameters
+%% Parameters
 maxRun = 30;          % Number of independent runs for each algorithm
-maxItr = 500;        % Maximum number of iterations
-populationNo = 30;   % Population size for algorithms
+maxItr = 500;         % Maximum number of iterations
+populationNo = 30;    % Population size for algorithms
 
-% Start parallel pool only if parallel mode is enabled
 if RUN_PARALLEL
-    c = parcluster;
-    maxAllowedWorkers = c.NumWorkers;
+    cluster = parcluster;
+    maxAllowedWorkers = cluster.NumWorkers;
 
     % Best practice: match workers with maxRun if you parallelize the run-loop
     numWorkers = min(maxRun, maxAllowedWorkers);
-
     if numWorkers > 1 && isempty(gcp('nocreate'))
-        % "Processes" is usually better for CPU-heavy independent runs
         parpool("Processes", numWorkers);
     end
 end
@@ -49,12 +58,10 @@ CECsDim = { ...
     { 10, 30, 50, 100 }, ...                         % CEC2014
     { 10, 30, 50, 100 }, ...                         % CEC2017
     { {'fixDim', []} }, ...                          % CEC2019
-    { 10, 15, 20 }, ...                              % CEC2020
-    { 10, 15, 20 } ...                               % CEC2022
+    { 10, 20 }, ...                                  % CEC2020
+    { 10, 20 } ...                                   % CEC2022
     { {'fixDim', []} }, ...                          % Real World Problem
-};
-
-
+    };
 
 % Select which benchmark indices to run
 selectedIndex = 1:7;
