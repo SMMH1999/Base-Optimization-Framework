@@ -33,31 +33,21 @@ if numAlgs>layout.algorithmCapacity
         layout.algorithmCapacity,numAlgs);
 end
 
-%% Correct final values below benchmark minima
-benchmarkResultsFixed=benchmarkResults;
-
-for algorithmIndex=1:numAlgs
-    for functionIndex=1:nFunction
-        if isempty(benchmarkResults{algorithmIndex,functionIndex}) || ...
-                shouldSkip(cecName,functionIndex)
-            continue;
-        end
-
-        dataMatrix=benchmarkResults{algorithmIndex,functionIndex};
-
-        if size(dataMatrix,1)>=maxItr && size(dataMatrix,2)>=maxRun
-            for runIndex=1:maxRun
-                dataMatrix(maxItr,runIndex)=FixIfBelowFmin( ...
-                    dataMatrix(maxItr,runIndex),functionIndex,cecName);
-            end
-        end
-
-        benchmarkResultsFixed{algorithmIndex,functionIndex}=dataMatrix;
-    end
+%% Benchmark reference validation
+reference=benchmarkReference(cecName);
+if nFunction~=numel(reference.optimumValues)
+    error('Conclusion:ReferenceSizeMismatch', ...
+        'CEC%s provides %d functions but %d hard-coded optima are configured.', ...
+        cecLabel,nFunction,numel(reference.optimumValues));
 end
 
+% Raw benchmarkResults remain untouched. Final-run values are canonicalized
+% only when they enter reported summaries, rankings, and statistical tests.
+
 %% Save Conclusions values into the existing template
+config=statisticalConfig('get');
 summaryValues=nan(nFunction*3,numAlgs);
+referenceViolation=false(nFunction,1);
 
 for functionIndex=1:nFunction
     if shouldSkip(cecName,functionIndex)
@@ -67,27 +57,43 @@ for functionIndex=1:nFunction
     outputRow=(functionIndex-1)*3+1;
 
     for algorithmIndex=1:numAlgs
-        if isempty(benchmarkResultsFixed{algorithmIndex,functionIndex})
+        if isempty(benchmarkResults{algorithmIndex,functionIndex})
             continue;
         end
 
-        dataMatrix=benchmarkResultsFixed{algorithmIndex,functionIndex};
+        dataMatrix=benchmarkResults{algorithmIndex,functionIndex};
         if size(dataMatrix,1)<maxItr+1 || size(dataMatrix,2)<maxRun
             continue;
         end
 
-        finalValues=dataMatrix(maxItr,1:maxRun);
+        finalValues=double(dataMatrix(maxItr,1:maxRun));
+        finiteFinal=finalValues(isfinite(finalValues));
+        if lower(string(config.performanceDirection))=="min" && ~isempty(finiteFinal)
+            optimum=reference.optimumValues(functionIndex);
+            tolerance=reference.canonicalTolerance(functionIndex);
+            referenceViolation(functionIndex)=referenceViolation(functionIndex) || ...
+                any(finiteFinal<optimum-tolerance);
+        end
+        finalValues=FixIfBelowFmin(finalValues,functionIndex,cecName);
         cpuValues=dataMatrix(maxItr+1,1:maxRun);
 
-        summaryValues(outputRow,algorithmIndex)=mean(finalValues,'omitnan');
+        reportedMean=mean(finalValues,'omitnan');
+        reportedMean=FixIfBelowFmin(reportedMean,functionIndex,cecName);
+        summaryValues(outputRow,algorithmIndex)=reportedMean;
         summaryValues(outputRow+1,algorithmIndex)=std(finalValues,0,'omitnan');
         summaryValues(outputRow+2,algorithmIndex)=mean(cpuValues,'omitnan');
     end
 end
 
-config=statisticalConfig('get');
-[bestFunctionCount,overallRank]=calculateAggregateRanking( ...
-    benchmarkResultsFixed,maxItr,maxRun,nFunction,numAlgs,cecName,config);
+if any(referenceViolation)
+    warning('Conclusion:ReferenceViolation', ...
+        ['CEC%s returned values below the hard-coded optimum by more than the configured tolerance for function(s) %s. ' ...
+        'Those values were preserved as requested; verify the external benchmark implementation and reference mapping.'], ...
+        cecLabel,mat2str(find(referenceViolation)'));
+end
+
+[bestFunctionCount,equalBestFunctionCount]=calculateBestFunctionCounts( ...
+    benchmarkResults,maxItr,maxRun,nFunction,numAlgs,cecName,config);
 
 fprintf('  Saving formatted results... ');
 saveTimer=tic;
@@ -98,14 +104,12 @@ Saving(cellstr(algorithmNames)',resultsDir,baseName,fileFormat, ...
     'Conclusions',layout.algorithmHeaderCell);
 Saving(summaryValues,resultsDir,baseName,fileFormat, ...
     'Conclusions',layout.summaryStartCell);
-Saving([bestFunctionCount;overallRank],resultsDir,baseName,fileFormat, ...
-    'Conclusions',layout.aggregateStartCell);
+statisticalAnalysis( ...
+    benchmarkResults,maxItr,maxRun,algorithmNames,nFunction, ...
+    cecLabel,baseName,resultsDir,fileFormat);
 
-if config.enabled
-    statisticalAnalysis( ...
-        benchmarkResultsFixed,maxItr,maxRun,algorithmNames,nFunction, ...
-        cecLabel,baseName,resultsDir,fileFormat);
-end
+Saving([bestFunctionCount;equalBestFunctionCount],resultsDir,baseName,fileFormat, ...
+    'Conclusions',layout.aggregateStartCell);
 
 fprintf('done (%.2f s).\n',toc(saveTimer));
 
@@ -114,12 +118,12 @@ for algorithmIndex=1:numAlgs
     rawData=nan(maxItr,nFunction);
 
     for functionIndex=1:nFunction
-        if isempty(benchmarkResultsFixed{algorithmIndex,functionIndex}) || ...
+        if isempty(benchmarkResults{algorithmIndex,functionIndex}) || ...
                 shouldSkip(cecName,functionIndex)
             continue;
         end
 
-        dataMatrix=benchmarkResultsFixed{algorithmIndex,functionIndex};
+        dataMatrix=benchmarkResults{algorithmIndex,functionIndex};
         if size(dataMatrix,1)<maxItr || size(dataMatrix,2)<maxRun
             continue;
         end
@@ -148,11 +152,11 @@ layout.aggregateStartRow=nFunction*3+3;
 layout.aggregateStartCell=sprintf('D%d',layout.aggregateStartRow);
 end
 
-function [bestFunctionCount,overallRank]=calculateAggregateRanking( ...
+function [bestFunctionCount,equalBestFunctionCount]=calculateBestFunctionCounts( ...
     benchmarkResults,maxItr,maxRun,nFunction,numAlgs,cecName,config)
 performanceMatrix=nan(nFunction,numAlgs);
-rankMatrix=nan(nFunction,numAlgs);
-validFunction=false(nFunction,1);
+bestFunctionCount=zeros(1,numAlgs);
+equalBestFunctionCount=zeros(1,numAlgs);
 
 for functionIndex=1:nFunction
     if cecName==3 && functionIndex==2
@@ -173,7 +177,8 @@ for functionIndex=1:nFunction
             break;
         end
 
-        values=dataMatrix(maxItr,1:maxRun);
+        values=double(dataMatrix(maxItr,1:maxRun));
+        values=FixIfBelowFmin(values,functionIndex,cecName);
         values=values(isfinite(values));
 
         if isempty(values)
@@ -182,32 +187,28 @@ for functionIndex=1:nFunction
         end
 
         if lower(string(config.rankingMetric))=="median"
-            performanceMatrix(functionIndex,algorithmIndex)=median(values);
+            performanceValue=median(values);
         else
-            performanceMatrix(functionIndex,algorithmIndex)=mean(values);
+            performanceValue=mean(values);
         end
+
+        performanceMatrix(functionIndex,algorithmIndex)=FixIfBelowFmin( ...
+            performanceValue,functionIndex,cecName);
     end
 
     if ~complete || ~all(isfinite(performanceMatrix(functionIndex,:)))
         continue;
     end
 
-    validFunction(functionIndex)=true;
+    functionRanks=rankCompetitionValues( ...
+        performanceMatrix(functionIndex,:),config.performanceDirection);
+    bestIndices=find(functionRanks==min(functionRanks,[],'omitnan'));
 
-    if lower(string(config.performanceDirection))=="max"
-        rankMatrix(functionIndex,:)=tiedrank(-performanceMatrix(functionIndex,:));
-    else
-        rankMatrix(functionIndex,:)=tiedrank(performanceMatrix(functionIndex,:));
+    if numel(bestIndices)==1
+        bestFunctionCount(bestIndices)=bestFunctionCount(bestIndices)+1;
+    elseif numel(bestIndices)>1
+        equalBestFunctionCount(bestIndices)=equalBestFunctionCount(bestIndices)+1;
     end
-end
-
-bestFunctionCount=sum(rankMatrix==1,1);
-
-if any(validFunction)
-    averageRank=mean(rankMatrix(validFunction,:),1,'omitnan');
-    overallRank=tiedrank(averageRank);
-else
-    overallRank=nan(1,numAlgs);
 end
 end
 

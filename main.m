@@ -13,9 +13,6 @@ ensureAlgorithmsSubmodule(basePath, algDir, 14);        % 14 days threshold
 addedPaths = genpath(basePath);
 addpath(addedPaths);
 
-% Initialize versioned results context
-ProjectContext('init', basePath);
-
 %% Statistical analysis configuration
 statsConfig = struct();
 statsConfig.enabled = true;
@@ -23,6 +20,8 @@ statsConfig.alpha = 0.05;
 statsConfig.referenceAlgorithm = 1;
 statsConfig.performanceDirection = "min";
 statsConfig.rankingMetric = "mean";
+statsConfig.comparisonAbsoluteTolerance = 1e-14;
+statsConfig.comparisonUlpFactor = 16;
 statsConfig.applyHolm = true;
 statsConfig.exportBoxplots = true;
 statsConfig.boxplotFunctions = [];
@@ -30,7 +29,7 @@ statisticalConfig('set', statsConfig);
 
 %% Reference algorithm diagnostic configuration
 diagConfig = struct();
-diagConfig.enabled = true;
+diagConfig.enabled = false;
 diagConfig.cecIndex = 1;
 diagConfig.functionIndices = [1 5 8 9 11];
 diagConfig.runSelection = "median";
@@ -51,7 +50,7 @@ RUN_PARALLEL = false; % <<< set to false to disable parallel mode
 % false -> run everything serially
 
 %% Parameters
-maxRun = 30;          % Number of independent runs for each algorithm
+maxRun = 3;          % Number of independent runs for each algorithm
 maxItr = 500;         % Maximum number of iterations
 populationNo = 30;    % Population size for algorithms
 
@@ -69,8 +68,8 @@ end
 % Define dimensions for each benchmark set
 CECsDim = { ...
     { {'fixDim', []} }, ...                          % CEC2005
-    { 10, 30, 50, 100 }, ...                         % CEC2014
-    { 10, 30, 50, 100 }, ...                         % CEC2017
+    { 10, 30 }, ...                         % CEC2014
+    { 10, 30 }, ...                         % CEC2017
     { {'fixDim', []} }, ...                          % CEC2019
     { 10, 20 }, ...                                  % CEC2020
     { 10, 20 } ...                                   % CEC2022
@@ -78,7 +77,11 @@ CECsDim = { ...
     };
 
 % Select which benchmark indices to run
-selectedIndex = 1:7;
+selectedIndex = [5:6];
+
+% Initialize results context after benchmark selection is fully defined.
+% Only templates required by selectedIndex and CECsDim are copied.
+ProjectContext('init',basePath,selectedIndex,CECsDim);
 
 %% Main execution loop
 for index = selectedIndex

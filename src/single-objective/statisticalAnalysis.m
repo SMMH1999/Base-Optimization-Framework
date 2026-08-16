@@ -1,4 +1,4 @@
-function []=statisticalAnalysis(benchmarkResults,maxItr,maxRun,algorithmNames,nFunction,cecLabel,baseName,resultsDir,fileFormat)
+function statisticalAnalysis(benchmarkResults,maxItr,maxRun,algorithmNames,nFunction,cecLabel,baseName,resultsDir,fileFormat)
     %STATISTICALANALYSIS Compute tests and write only dynamic template cells.
 
     %% Configuration
@@ -25,11 +25,14 @@ function []=statisticalAnalysis(benchmarkResults,maxItr,maxRun,algorithmNames,nF
     %% Compute one-sided reference comparisons
     [tTestP,tTestH,wilcoxonP,wilcoxonH,wilcoxonStat]=buildReferenceTests( ...
         benchmarkResults,maxItr,maxRun,nFunction,referenceAlgorithm, ...
-        comparisonAlgorithms,alpha,config);
+        comparisonAlgorithms,alpha,config,cecLabel);
 
     %% Compute function ranking and Friedman analysis
     friedmanOutput=buildFriedmanOutput( ...
-        benchmarkResults,maxItr,maxRun,algorithmNames,nFunction,alpha,config);
+        benchmarkResults,maxItr,maxRun,algorithmNames,nFunction,alpha,config,cecLabel);
+    if ~config.enabled
+        return;
+    end
 
     %% Save numerical test outputs
     if ~isempty(comparisonAlgorithms)
@@ -143,7 +146,9 @@ function saveExplanation(referenceAlgorithmName,alpha,config,resultsDir,baseName
 
     explanations={ ...
         'Conclusions', ...
-        'Mean, standard deviation, CPU time, number of best functions, and overall rank for the current benchmark set and dimension.'; ...
+        ['Mean, standard deviation, CPU time, unique best-function count, and equal-best-function count. ' ...
+        'Final-run values are canonicalized against the hard-coded benchmark optimum and benchmark-specific tolerance before comparison. ' ...
+        'A function contributes either to unique best or equal-best counts, never to both. Overall ranking is reported only in the Friedman sheet.']; ...
         'TTest_p', ...
         sprintf('%s Welch two-sample t-test p-values. Reference = %s. Values are %s. p < %.3g supports superiority of the reference algorithm.', ...
         tailText,char(referenceAlgorithmName),correctionText,alpha); ...
@@ -157,9 +162,9 @@ function saveExplanation(referenceAlgorithmName,alpha,config,resultsDir,baseName
         'Wilcoxon_stat', ...
         'Wilcoxon rank-sum statistic W. This is a technical test statistic; use Wilcoxon_p and Wilcoxon_h for interpretation.'; ...
         'Friedman', ...
-        ['Per-function algorithm ranks are shown together with the Kruskal-Wallis p-value for that function. ' ...
-        'The lower rank is better. The overall Friedman test evaluates rank differences across all benchmark functions, ' ...
-        'followed by reference-only Holm post-hoc comparisons when the overall test is significant.']; ...
+        ['Friedman-sheet per-function ranks are calculated after benchmark-specific optimum canonicalization; exact ties use MATLAB tied midranks. ' ...
+        'The lower rank is better. Average ranks determine the overall rank, while the Friedman test evaluates global rank differences ' ...
+        'across benchmark functions and Holm post-hoc comparisons are applied when configured.']; ...
         'Direction', ...
         sprintf('Optimization interpretation: %s.',directionText)};
 
@@ -175,7 +180,7 @@ function headers=buildPairwiseHeaders(algorithmNames,referenceAlgorithm,comparis
     end
 end
 
-function [tP,tH,wP,wH,wStat]=buildReferenceTests(benchmarkResults,maxItr,maxRun,nFunction,referenceAlgorithm,comparisonAlgorithms,alpha,config)
+function [tP,tH,wP,wH,wStat]=buildReferenceTests(benchmarkResults,maxItr,maxRun,nFunction,referenceAlgorithm,comparisonAlgorithms,alpha,config,cecLabel)
     numComparisons=numel(comparisonAlgorithms);
     tRaw=nan(nFunction,numComparisons);
     wRaw=nan(nFunction,numComparisons);
@@ -193,7 +198,8 @@ function [tP,tH,wP,wH,wStat]=buildReferenceTests(benchmarkResults,maxItr,maxRun,
         end
 
         referenceValues=getFinalValues( ...
-            benchmarkResults{referenceAlgorithm,functionIndex},maxItr,maxRun);
+            benchmarkResults{referenceAlgorithm,functionIndex},maxItr,maxRun, ...
+            functionIndex,cecLabel);
 
         for comparisonIndex=1:numComparisons
             comparatorAlgorithm=comparisonAlgorithms(comparisonIndex);
@@ -202,7 +208,8 @@ function [tP,tH,wP,wH,wStat]=buildReferenceTests(benchmarkResults,maxItr,maxRun,
             end
 
             comparatorValues=getFinalValues( ...
-                benchmarkResults{comparatorAlgorithm,functionIndex},maxItr,maxRun);
+                benchmarkResults{comparatorAlgorithm,functionIndex},maxItr,maxRun, ...
+                functionIndex,cecLabel);
 
             tRaw(functionIndex,comparisonIndex)=safeWelchP( ...
                 referenceValues,comparatorValues,tail,alpha);
@@ -275,7 +282,7 @@ function [p,statistic]=safeRankSum(x,y,tail,alpha)
     statistic=stats.ranksum;
 end
 
-function output=buildFriedmanOutput(benchmarkResults,maxItr,maxRun,algorithmNames,nFunction,alpha,config)
+function output=buildFriedmanOutput(benchmarkResults,maxItr,maxRun,algorithmNames,nFunction,alpha,config,cecLabel)
     numAlgs=numel(algorithmNames);
     performanceMatrix=nan(nFunction,numAlgs);
     rankMatrix=nan(nFunction,numAlgs);
@@ -295,7 +302,8 @@ function output=buildFriedmanOutput(benchmarkResults,maxItr,maxRun,algorithmName
             end
 
             values=getFinalValues( ...
-                benchmarkResults{algorithmIndex,functionIndex},maxItr,maxRun);
+                benchmarkResults{algorithmIndex,functionIndex},maxItr,maxRun, ...
+                functionIndex,cecLabel);
 
             if numel(values)~=maxRun || any(~isfinite(values))
                 complete=false;
@@ -305,10 +313,14 @@ function output=buildFriedmanOutput(benchmarkResults,maxItr,maxRun,algorithmName
             runMatrix(:,algorithmIndex)=values(:);
 
             if lower(string(config.rankingMetric))=="median"
-                performanceMatrix(functionIndex,algorithmIndex)=median(values);
+                performanceValue=median(values);
             else
-                performanceMatrix(functionIndex,algorithmIndex)=mean(values);
+                performanceValue=mean(values);
             end
+
+            performanceValue=FixIfBelowFmin( ...
+                performanceValue,functionIndex,cecLabel);
+            performanceMatrix(functionIndex,algorithmIndex)=performanceValue;
         end
 
         if ~complete
@@ -318,11 +330,8 @@ function output=buildFriedmanOutput(benchmarkResults,maxItr,maxRun,algorithmName
 
         validFunction(functionIndex)=true;
 
-        if lower(string(config.performanceDirection))=="max"
-            rankMatrix(functionIndex,:)=tiedrank(-performanceMatrix(functionIndex,:));
-        else
-            rankMatrix(functionIndex,:)=tiedrank(performanceMatrix(functionIndex,:));
-        end
+        rankMatrix(functionIndex,:)=rankCanonicalValues( ...
+            performanceMatrix(functionIndex,:),config.performanceDirection);
 
         bestAlgorithm(functionIndex)=formatBestAlgorithms( ...
             rankMatrix(functionIndex,:),algorithmNames);
@@ -336,21 +345,28 @@ function output=buildFriedmanOutput(benchmarkResults,maxItr,maxRun,algorithmName
     validPerformance=performanceMatrix(validFunction,:);
     functionCount=size(validRanks,1);
 
-    if functionCount>0
-        averageRank=mean(validRanks,1,'omitnan');
-        overallRank=tiedrank(averageRank);
-    else
-        averageRank=nan(1,numAlgs);
-        overallRank=nan(1,numAlgs);
-    end
-
+    averageRank=nan(1,numAlgs);
+    overallRank=nan(1,numAlgs);
     friedmanP=NaN;
+
     if functionCount>=2 && numAlgs>=2
         if all(validPerformance(:)==validPerformance(1))
+            averageRank=mean(validRanks,1,'omitnan');
+            overallRank=tiedrank(averageRank);
             friedmanP=1;
         else
-            friedmanP=friedman(validPerformance,1,'off');
+            friedmanData=validPerformance;
+            if lower(string(config.performanceDirection))=="max"
+                friedmanData=-friedmanData;
+            end
+
+            [friedmanP,~,friedmanStats]=friedman(friedmanData,1,'off');
+            averageRank=friedmanStats.meanranks;
+            overallRank=tiedrank(averageRank);
         end
+    elseif functionCount>0
+        averageRank=mean(validRanks,1,'omitnan');
+        overallRank=tiedrank(averageRank);
     end
 
     friedmanSignificant=isfinite(friedmanP) && friedmanP<alpha;
@@ -466,8 +482,9 @@ function postHoc=buildFriedmanHolmPostHoc(averageRank,functionCount,algorithmNam
         'VariableNames',{'Comparison','AdjustedP','Significant','Result'});
 end
 
-function values=getFinalValues(dataMatrix,maxItr,maxRun)
-    values=dataMatrix(maxItr,1:maxRun);
+function values=getFinalValues(dataMatrix,maxItr,maxRun,functionIndex,cecName)
+    values=double(dataMatrix(maxItr,1:maxRun));
+    values=FixIfBelowFmin(values,functionIndex,cecName);
     values=double(values(:)');
 end
 
@@ -542,6 +559,7 @@ function exportAllAlgorithmBoxplots(benchmarkResults,maxItr,maxRun,algorithmName
             end
 
             fitnessValues=double(dataMatrix(maxItr,1:maxRun));
+            fitnessValues=FixIfBelowFmin(fitnessValues,functionIndex,cecLabel);
             fitnessValues=fitnessValues(isfinite(fitnessValues));
             if isempty(fitnessValues)
                 continue;
