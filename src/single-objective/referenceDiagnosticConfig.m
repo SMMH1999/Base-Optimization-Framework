@@ -55,19 +55,36 @@ end
 end
 
 function validateConfig(config)
+% The diagnostic renderer is intentionally tied to the 23-function CEC2005
+% baseline because those functions provide the problem-space visualization
+% contract used by runReferenceDiagnostics.
 if ~isscalar(config.cecIndex) || ~isnumeric(config.cecIndex) || ...
-        ~isfinite(config.cecIndex) || config.cecIndex<1 || ...
-        fix(config.cecIndex)~=config.cecIndex
-    error('referenceDiagnosticConfig:InvalidCECIndex', ...
-        'cecIndex must be a positive integer scalar.');
+        ~isfinite(config.cecIndex) || config.cecIndex~=1
+    error('referenceDiagnosticConfig:UnsupportedCECIndex', ...
+        'Reference diagnostics are supported only for CEC2005 (cecIndex = 1).');
 end
 
-if ~isnumeric(config.functionIndices) || ...
+if ~isempty(config.functionIndices) && ...
+        (~isnumeric(config.functionIndices) || ~isvector(config.functionIndices) || ...
         any(~isfinite(config.functionIndices)) || ...
         any(config.functionIndices<1) || ...
-        any(fix(config.functionIndices)~=config.functionIndices)
+        any(config.functionIndices>23) || ...
+        any(fix(config.functionIndices)~=config.functionIndices))
     error('referenceDiagnosticConfig:InvalidFunctionIndices', ...
-        'functionIndices must contain positive integer values.');
+        'functionIndices must be a vector containing CEC2005 function indices from 1 through 23.');
+end
+
+logicalFields={"enabled","validateReplay","saveReplayData","exportFigures"};
+for i=1:numel(logicalFields)
+    fieldName=logicalFields{i};
+    fieldValue=config.(fieldName);
+    isLogicalScalar=islogical(fieldValue) && isscalar(fieldValue);
+    isBinaryNumeric=isnumeric(fieldValue) && isscalar(fieldValue) && ...
+        isfinite(fieldValue) && any(fieldValue==[0 1]);
+    if ~(isLogicalScalar || isBinaryNumeric)
+        error('referenceDiagnosticConfig:InvalidLogicalField', ...
+            '%s must be a logical scalar (or numeric 0/1).',fieldName);
+    end
 end
 
 if lower(string(config.runSelection))~="median"
@@ -75,7 +92,14 @@ if lower(string(config.runSelection))~="median"
         'Only median run selection is currently supported.');
 end
 
-integerFields={"surfaceGridSize","maxDisplayedPoints","maxCapturedEvaluations"};
+if ~isscalar(config.surfaceGridSize) || ~isnumeric(config.surfaceGridSize) || ...
+        ~isfinite(config.surfaceGridSize) || config.surfaceGridSize<2 || ...
+        fix(config.surfaceGridSize)~=config.surfaceGridSize
+    error('referenceDiagnosticConfig:InvalidSurfaceGridSize', ...
+        'surfaceGridSize must be an integer scalar greater than or equal to 2.');
+end
+
+integerFields={"maxDisplayedPoints","maxCapturedEvaluations"};
 for i=1:numel(integerFields)
     fieldName=integerFields{i};
     fieldValue=config.(fieldName);

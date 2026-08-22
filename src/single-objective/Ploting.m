@@ -147,8 +147,8 @@ function [] = finalizeFigure(path, figureCounter, cecName, plotHandles, legendEn
     % Add a shared title for the figure
     sgtitle(sprintf('CEC Benchmark Functions %s', cecName));
 
-    % Save figure in SVG and JPG formats
-    saveas(gcf, fullfile(path, sprintf('CEC_Plots%d.svg', figureCounter)));
+    % Save a pure-vector SVG when supported (EPS fallback otherwise) plus a raster JPG preview.
+    exportVectorSvg(gcf, fullfile(path, sprintf('CEC_Plots%d.svg', figureCounter)));
     saveas(gcf, fullfile(path, sprintf('CEC_Plots%d.jpg', figureCounter)));
 
     % Close figure to free memory

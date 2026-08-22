@@ -179,6 +179,15 @@ function RunBenchmarkSuite(CEC_Index, populationNo, maxRun, maxItr, CECsDim)
         if exist(algDir,'dir')~=7, mkdir(algDir); end
         save(fullfile(algDir, feLogName), 'benchmarkFEs', 'benchmarkFEWarnItr', 'populationNo', 'maxItr', 'maxRun', 'CEC_Index', 'Dim');
 
+        %% Independent Exploration / Exploitation phase
+        eeConfig=explorationExploitationConfig('get');
+        if eeConfig.enabled && any(CEC_Index==eeConfig.cecIndices)
+            runExplorationExploitationAnalysis( ...
+                benchmarkResults,maxItr,maxRun,populationNo, ...
+                costFunction,costFunctionDetails,algorithms,algorithmsName, ...
+                DimOverride,CEC_Index,dim);
+        end
+
         %% Reference diagnostic phase
         diagConfig=referenceDiagnosticConfig('get');
         if diagConfig.enabled && CEC_Index==diagConfig.cecIndex

@@ -1,261 +1,330 @@
-function []=ConclusionRW(benchmarkResults,maxItr,maxRun,algorithmFileAddress,nFunction,cecName,dim,bestSolutionResults)
-%CONCLUSIONRW Save Real-World benchmark outputs, rankings, and decision vectors.
+function ConclusionRW(benchmarkResults,maxItr,maxRun,algorithmFileAddress,nFunction, ...
+    ~,dim,bestSolutionResults,runEvaluationResults)
+%CONCLUSIONRW Save constrained-engineering results and feasibility-aware ranks.
 
-suiteName="Real World Problems";
-[algorithmNames,~]=Get_algorithm(algorithmFileAddress);
-algorithmNames=string(algorithmNames(:));
-numAlgs=numel(algorithmNames);
+suiteName = 'Real World Problems';
+[algorithmNames,~] = Get_algorithm(algorithmFileAddress);
+algorithmNames = string(algorithmNames(:));
+numAlgs = numel(algorithmNames);
+algorithmCapacity = 15;
 
-ctx=ProjectContext('get');
-resultsDir=fullfile(ctx.resultsRoot,char(suiteName));
-algoDir=fullfile(resultsDir,'algorithms');
-
-if exist(resultsDir,'dir')~=7
-    mkdir(resultsDir);
-end
-if exist(algoDir,'dir')~=7
-    mkdir(algoDir);
+if numAlgs > algorithmCapacity
+    error('ConclusionRW:TemplateAlgorithmCapacity', ...
+        'The Real World template supports %d algorithms; %d were supplied.', ...
+        algorithmCapacity,numAlgs);
 end
 
-fileFormat='xlsx';
-baseName=dimTagFromInput(dim);
-workbookPath=fullfile(resultsDir,[baseName '.' fileFormat]);
-shouldSkip=@(cecNameVal,functionIndex) cecNameVal==3 && functionIndex==2;
+ctx = ProjectContext('get');
+resultsDir = fullfile(ctx.resultsRoot,suiteName);
+algoDir = fullfile(resultsDir,'algorithms');
+if exist(resultsDir,'dir') ~= 7, mkdir(resultsDir); end
+if exist(algoDir,'dir') ~= 7, mkdir(algoDir); end
 
-%% Save Conclusions numeric values and automatic ranking
-summaryMetricCount=4;   % Min, Mean, Max, Std
-rankingMetricCount=3;   % Min, Mean, Max only
-summaryValues=nan(summaryMetricCount*nFunction,numAlgs);
+fileFormat = 'xlsx';
+baseName = dimTagFromInput(dim);
 
-for algorithmIndex=1:numAlgs
-    for functionIndex=1:nFunction
-        if isempty(benchmarkResults{algorithmIndex,functionIndex}) || ...
-                shouldSkip(cecName,functionIndex)
+summaryMetricCount = 6;  % Min, Mean, Max, Std, Feasible %, Optimum Hits
+rankingMetricCount = 3;  % Min, Mean, Max
+summaryValues = nan(summaryMetricCount*nFunction,numAlgs);
+feasibleCounts = zeros(nFunction,numAlgs);
+validCounts = zeros(nFunction,numAlgs);
+meanViolations = inf(nFunction,numAlgs);
+
+for functionIndex = 1:nFunction
+    for algorithmIndex = 1:numAlgs
+        runs = runEvaluationResults{algorithmIndex,functionIndex};
+        if isempty(runs)
             continue;
         end
 
-        dataMatrix=benchmarkResults{algorithmIndex,functionIndex};
-        minColumn=maxRun+1;
-        meanColumn=maxRun+2;
-        maxColumn=maxRun+3;
-        stdColumn=maxRun+4;
-        finalRow=min(size(dataMatrix,1),maxItr);
-        rowStart=(functionIndex-1)*summaryMetricCount+1;
+        rawObjectives = nan(maxRun,1);
+        reportObjectives = nan(maxRun,1);
+        feasibleMask = false(maxRun,1);
+        validMask = false(maxRun,1);
+        hitMask = false(maxRun,1);
+        violations = inf(maxRun,1);
 
-        if size(dataMatrix,2)>=minColumn
-            summaryValues(rowStart,algorithmIndex)=dataMatrix(finalRow,minColumn);
+        for run = 1:min(maxRun,numel(runs))
+            e = runs{run};
+            if isempty(e), continue; end
+            rawObjectives(run) = e.rawObjective;
+            reportObjectives(run) = e.reportedObjective;
+            feasibleMask(run) = e.isFeasible;
+            validMask(run) = e.isValidResult;
+            hitMask(run) = e.optimumHit;
+            violations(run) = e.weightedViolation;
         end
-        if size(dataMatrix,2)>=meanColumn
-            summaryValues(rowStart+1,algorithmIndex)=dataMatrix(finalRow,meanColumn);
+
+        validValues = reportObjectives(validMask & isfinite(reportObjectives));
+        rowStart = (functionIndex-1)*summaryMetricCount+1;
+        if ~isempty(validValues)
+            summaryValues(rowStart,algorithmIndex) = min(validValues);
+            summaryValues(rowStart+1,algorithmIndex) = mean(validValues);
+            summaryValues(rowStart+2,algorithmIndex) = max(validValues);
+            if numel(validValues) > 1
+                summaryValues(rowStart+3,algorithmIndex) = std(validValues,0);
+            else
+                summaryValues(rowStart+3,algorithmIndex) = 0;
+            end
         end
-        if size(dataMatrix,2)>=maxColumn
-            summaryValues(rowStart+2,algorithmIndex)=dataMatrix(finalRow,maxColumn);
-        end
-        if size(dataMatrix,2)>=stdColumn
-            summaryValues(rowStart+3,algorithmIndex)=dataMatrix(finalRow,stdColumn);
+
+        feasibleCounts(functionIndex,algorithmIndex) = sum(feasibleMask);
+        validCounts(functionIndex,algorithmIndex) = sum(validMask);
+        summaryValues(rowStart+4,algorithmIndex) = 100*sum(feasibleMask)/maxRun;
+        summaryValues(rowStart+5,algorithmIndex) = sum(hitMask);
+
+        finiteViolations = violations(isfinite(violations));
+        if ~isempty(finiteViolations)
+            meanViolations(functionIndex,algorithmIndex) = mean(finiteViolations);
         end
     end
 end
 
-globalOptima=readGlobalOptima(workbookPath,nFunction,summaryMetricCount);
-[bestFunctionCount,overallRank]=calculateRealWorldRanking( ...
-    summaryValues,globalOptima,nFunction,numAlgs, ...
-    summaryMetricCount,rankingMetricCount);
+[bestFunctionCount,overallRank] = calculateRealWorldRanking( ...
+    summaryValues,validCounts,meanViolations,nFunction,numAlgs,summaryMetricCount);
 
-bestCountStartRow=3+nFunction*summaryMetricCount;
-overallRankStartRow=bestCountStartRow+rankingMetricCount;
+bestCountStartRow = 3+nFunction*summaryMetricCount;
+overallRankStartRow = bestCountStartRow+rankingMetricCount;
 
-algorithmHeaders=cellstr(algorithmNames).';
-Saving(algorithmHeaders,resultsDir,baseName,fileFormat,'Conclusions','C2');
+% Clear all algorithm-header slots, then write the active names.
+headerCells = repmat({''},1,algorithmCapacity);
+for k = 1:numAlgs
+    headerCells{k} = char(algorithmNames(k));
+end
+Saving(headerCells,resultsDir,baseName,fileFormat,'Conclusions','C2');
 Saving(summaryValues,resultsDir,baseName,fileFormat,'Conclusions','C3');
 Saving(bestFunctionCount,resultsDir,baseName,fileFormat,'Conclusions', ...
     sprintf('C%d',bestCountStartRow));
 Saving(overallRank,resultsDir,baseName,fileFormat,'Conclusions', ...
     sprintf('C%d',overallRankStartRow));
 
-%% Save dynamic BestSolutions rows
-solutionTable=buildBestSolutionTable(bestSolutionResults,algorithmNames);
+solutionTable = buildBestSolutionTable(bestSolutionResults,algorithmNames);
 Saving(solutionTable,resultsDir,baseName,fileFormat,'BestSolutions','A3');
 
-%% Save raw iteration curves per algorithm
-headers=[{'Iteration'},arrayfun(@(x) sprintf('P%d',x),1:nFunction, ...
+% Export median convergence across independent runs. This is a real aggregate
+% trajectory and not the pointwise best envelope of unrelated runs.
+headers = [{'Iteration'},arrayfun(@(x) sprintf('P%d',x),1:nFunction, ...
     'UniformOutput',false)];
-iterationColumn=(1:maxItr)';
+iterationColumn = (1:maxItr)';
 
-for algorithmIndex=1:numAlgs
-    rawData=nan(maxItr,nFunction);
-
-    for functionIndex=1:nFunction
-        if isempty(benchmarkResults{algorithmIndex,functionIndex}) || ...
-                shouldSkip(cecName,functionIndex)
-            continue;
-        end
-
-        dataMatrix=benchmarkResults{algorithmIndex,functionIndex};
-        bestColumn=maxRun+1;
-        rowCount=min(maxItr,size(dataMatrix,1));
-
-        if size(dataMatrix,2)>=bestColumn
-            rawData(1:rowCount,functionIndex)=dataMatrix(1:rowCount,bestColumn);
-        end
+for algorithmIndex = 1:numAlgs
+    rawData = nan(maxItr,nFunction);
+    for functionIndex = 1:nFunction
+        dataMatrix = benchmarkResults{algorithmIndex,functionIndex};
+        if isempty(dataMatrix), continue; end
+        rawData(:,functionIndex) = medianRunCurve(dataMatrix,maxItr,maxRun);
     end
 
-    fullData=[iterationColumn,rawData];
-    sheetName=sanitizeSheetName(algorithmNames(algorithmIndex));
-    algorithmFile=sprintf('%s_%s',baseName,sheetName);
-
+    fullData = [iterationColumn,rawData];
+    sheetName = sanitizeSheetName(algorithmNames(algorithmIndex));
+    algorithmFile = sprintf('%s_%s',baseName,sheetName);
     Saving(headers,algoDir,algorithmFile,fileFormat,sheetName,'A1');
     Saving(fullData,algoDir,algorithmFile,fileFormat,sheetName,'A2');
 end
 end
 
-function [bestFunctionCount,overallRank]=calculateRealWorldRanking(summaryValues,globalOptima,nFunction,numAlgs,summaryMetricCount,rankingMetricCount)
-%CALCULATEREALWORLDRANKING Rank Min/Mean/Max by distance to global optimum.
-rankCube=nan(nFunction,numAlgs,rankingMetricCount);
+function [bestFunctionCount,overallRank] = calculateRealWorldRanking( ...
+    summaryValues,validCounts,meanViolations,nFunction,numAlgs,summaryMetricCount)
+rankingMetricCount = 3;
+rankCube = nan(nFunction,numAlgs,rankingMetricCount);
 
-for functionIndex=1:nFunction
-    for metricIndex=1:rankingMetricCount
-        row=(functionIndex-1)*summaryMetricCount+metricIndex;
-        values=summaryValues(row,:);
+for functionIndex = 1:nFunction
+    problem = EngineeringProblem(functionIndex);
+    tolerance = problem.canonicalTolerance;
 
-        if ~all(isfinite(values))
-            continue;
-        end
-
-        score=abs(values-globalOptima(functionIndex));
-        rankCube(functionIndex,:,metricIndex)=rankEqAscending(score);
+    for metricIndex = 1:rankingMetricCount
+        row = (functionIndex-1)*summaryMetricCount+metricIndex;
+        values = summaryValues(row,:);
+        rankCube(functionIndex,:,metricIndex) = rankFeasibilityFirst( ...
+            values,validCounts(functionIndex,:),meanViolations(functionIndex,:),tolerance);
     end
 end
 
-bestFunctionCount=nan(rankingMetricCount,numAlgs);
-overallRank=nan(rankingMetricCount,numAlgs);
-
-for metricIndex=1:rankingMetricCount
-    metricRanks=rankCube(:,:,metricIndex);
-    validFunction=all(isfinite(metricRanks),2);
-
-    if ~any(validFunction)
-        continue;
-    end
-
-    validRanks=metricRanks(validFunction,:);
-    bestFunctionCount(metricIndex,:)=sum(validRanks==1,1);
-    averageRank=mean(validRanks,1,'omitnan');
-    overallRank(metricIndex,:)=rankEqAscending(averageRank);
+bestFunctionCount = nan(rankingMetricCount,numAlgs);
+overallRank = nan(rankingMetricCount,numAlgs);
+for metricIndex = 1:rankingMetricCount
+    metricRanks = rankCube(:,:,metricIndex);
+    validFunctions = all(isfinite(metricRanks),2);
+    if ~any(validFunctions), continue; end
+    validRanks = metricRanks(validFunctions,:);
+    bestFunctionCount(metricIndex,:) = sum(abs(validRanks-1) <= 1e-12,1);
+    averageRank = mean(validRanks,1);
+    overallRank(metricIndex,:) = competitionRankTolerance(averageRank,1e-12);
 end
 end
 
-function ranks=rankEqAscending(values)
-%RANKEQASCENDING Competition ranking equivalent to RANK.EQ ascending.
-ranks=nan(size(values));
-finiteMask=isfinite(values);
-finiteValues=values(finiteMask);
-finiteIndices=find(finiteMask);
+function ranks = rankFeasibilityFirst(values,validCounts,meanViolations,tolerance)
+numAlgs = numel(values);
+ranks = nan(1,numAlgs);
+validCounts = double(validCounts(:).');
 
-for indexPosition=1:numel(finiteIndices)
-    valueIndex=finiteIndices(indexPosition);
-    ranks(valueIndex)=1+sum(finiteValues<values(valueIndex));
-end
-end
+countLevels = unique(validCounts,'sorted');
+countLevels = fliplr(countLevels);
+baseRank = 1;
+for levelIndex = 1:numel(countLevels)
+    countLevel = countLevels(levelIndex);
+    group = find(validCounts == countLevel);
+    if isempty(group), continue; end
 
-function globalOptima=readGlobalOptima(workbookPath,nFunction,summaryMetricCount)
-%READGLOBALOPTIMA Read one fixed Global Optimum per problem from the template.
-dataStartRow=3;
-lastRow=dataStartRow+nFunction*summaryMetricCount-1;
-range=sprintf('R%d:R%d',dataStartRow,lastRow);
-rawValues=readmatrix(workbookPath,'Sheet','Conclusions','Range',range);
-globalOptima=rawValues(1:summaryMetricCount:end);
-globalOptima=globalOptima(:);
-
-if numel(globalOptima)~=nFunction || any(~isfinite(globalOptima))
-    error('ConclusionRW:InvalidGlobalOptimum', ...
-        'Conclusions must contain one finite Global Optimum for each problem.');
-end
-end
-
-function output=buildBestSolutionTable(bestSolutionResults,algorithmNames)
-%BUILDBESTSOLUTIONTABLE Build dynamic Problem/Algorithm rows and result values.
-[algorithmCount,functionCount]=size(bestSolutionResults);
-variableCapacity=11;
-output=cell(algorithmCount*functionCount,5+variableCapacity);
-rowIndex=0;
-
-for functionIndex=1:functionCount
-    for algorithmIndex=1:algorithmCount
-        rowIndex=rowIndex+1;
-        output{rowIndex,1}=sprintf('Problem %d',functionIndex);
-        output{rowIndex,2}=char(algorithmNames(algorithmIndex));
-
-        if isempty(bestSolutionResults{algorithmIndex,functionIndex})
-            continue;
+    if countLevel > 0
+        groupValues = values(group);
+        finiteMask = isfinite(groupValues);
+        localRanks = nan(size(groupValues));
+        if any(finiteMask)
+            localRanks(finiteMask) = competitionRankTolerance(groupValues(finiteMask),tolerance);
         end
-
-        result=bestSolutionResults{algorithmIndex,functionIndex};
-        position=result.position(:).';
-        positionCount=numel(position);
-
-        if positionCount>variableCapacity
-            error('ConclusionRW:BestSolutionDimensionExceeded', ...
-                ['BestSolutions template supports %d decision-variable columns, ' ...
-                 'but Problem %d / algorithm %s returned %d.'], ...
-                variableCapacity,functionIndex,char(algorithmNames(algorithmIndex)), ...
-                positionCount);
+        if any(~finiteMask)
+            worstFinite = max(localRanks(finiteMask));
+            if isempty(worstFinite) || ~isfinite(worstFinite), worstFinite = 0; end
+            localRanks(~finiteMask) = worstFinite + (1:sum(~finiteMask));
         end
-
-        output{rowIndex,3}=result.fitness;
-        output{rowIndex,4}=result.run;
-        output{rowIndex,5}=positionCount;
-
-        for variableIndex=1:positionCount
-            output{rowIndex,5+variableIndex}=position(variableIndex);
-        end
-    end
-end
-end
-
-function tag=dimTagFromInput(dimVal)
-if isempty(dimVal)
-    tag='fixDim';
-    return;
-end
-
-if iscell(dimVal) && ~isempty(dimVal)
-    try
-        firstValue=string(dimVal{1});
-        if lower(strtrim(firstValue))=="fixdim" || lower(strtrim(firstValue))=="fix"
-            tag='fixDim';
-            return;
-        end
-    catch
-    end
-end
-
-if isnumeric(dimVal)
-    if dimVal==0
-        tag='fixDim';
     else
-        tag=sprintf('%dDim',dimVal);
+        groupValues = meanViolations(group);
+        finiteMask = isfinite(groupValues);
+        localRanks = nan(size(groupValues));
+        if any(finiteMask)
+            localRanks(finiteMask) = competitionRankTolerance(groupValues(finiteMask),1e-12);
+            worstFinite = max(localRanks(finiteMask));
+            localRanks(~finiteMask) = worstFinite+1;
+        else
+            % All algorithms in this feasibility group failed numerically.
+            % Keep the function in the ranking and tie them at the same worst rank.
+            localRanks(:) = 1;
+        end
+    end
+
+    ranks(group) = baseRank-1+localRanks;
+    baseRank = baseRank+numel(group);
+end
+end
+
+function ranks = competitionRankTolerance(values,tolerance)
+values = double(values(:).');
+ranks = nan(size(values));
+finiteIndices = find(isfinite(values));
+if isempty(finiteIndices), return; end
+
+[sortedValues,order] = sort(values(finiteIndices),'ascend');
+sortedIndices = finiteIndices(order);
+position = 1;
+while position <= numel(sortedValues)
+    groupStart = position;
+    groupEnd = position;
+    referenceValue = sortedValues(groupStart);
+    while groupEnd < numel(sortedValues)
+        candidate = sortedValues(groupEnd+1);
+        scale = max([1 abs(referenceValue) abs(candidate)]);
+        numericTolerance = max(tolerance,16*eps(scale));
+        if abs(candidate-referenceValue) > numericTolerance
+            break;
+        end
+        groupEnd = groupEnd+1;
+    end
+    ranks(sortedIndices(groupStart:groupEnd)) = groupStart;
+    position = groupEnd+1;
+end
+end
+
+function output = buildBestSolutionTable(bestSolutionResults,algorithmNames)
+[algorithmCount,functionCount] = size(bestSolutionResults);
+variableCapacity = 11;
+fixedColumnCount = 14;
+output = cell(algorithmCount*functionCount,fixedColumnCount+variableCapacity);
+rowIndex = 0;
+
+for functionIndex = 1:functionCount
+    problem = EngineeringProblem(functionIndex);
+    for algorithmIndex = 1:algorithmCount
+        rowIndex = rowIndex+1;
+        output{rowIndex,1} = sprintf('Problem %d',functionIndex);
+        output{rowIndex,2} = problem.name;
+        output{rowIndex,3} = char(algorithmNames(algorithmIndex));
+
+        record = bestSolutionResults{algorithmIndex,functionIndex};
+        if isempty(record) || ~isfield(record,'evaluation') || isempty(record.evaluation)
+            continue;
+        end
+
+        e = record.evaluation;
+        position = e.position(:).';
+        output{rowIndex,4} = record.run;
+        output{rowIndex,5} = resultStatus(e);
+        output{rowIndex,6} = logical(e.isFeasible);
+        output{rowIndex,7} = logical(e.optimumHit);
+        output{rowIndex,8} = e.rawObjective;
+        output{rowIndex,9} = e.reportedObjective;
+        output{rowIndex,10} = e.globalOptimum;
+        output{rowIndex,11} = e.absoluteError;
+        output{rowIndex,12} = e.totalViolation;
+        output{rowIndex,13} = e.maxViolation;
+        output{rowIndex,14} = numel(position);
+
+        if numel(position) > variableCapacity
+            error('ConclusionRW:BestSolutionDimensionExceeded', ...
+                'Problem %d returned %d variables; template supports %d.', ...
+                functionIndex,numel(position),variableCapacity);
+        end
+        for variableIndex = 1:numel(position)
+            output{rowIndex,fixedColumnCount+variableIndex} = position(variableIndex);
+        end
+    end
+end
+end
+
+function status = resultStatus(e)
+if e.isValidResult && e.optimumHit
+    status = 'Optimum';
+elseif e.isValidResult
+    status = 'Feasible';
+elseif ~e.domainValid
+    status = 'Invalid domain';
+else
+    status = 'Infeasible';
+end
+end
+
+function curve = medianRunCurve(dataMatrix,maxItr,maxRun)
+curve = nan(maxItr,1);
+rowCount = min(maxItr,size(dataMatrix,1));
+runCount = min(maxRun,size(dataMatrix,2));
+for r = 1:rowCount
+    values = dataMatrix(r,1:runCount);
+    values = values(isfinite(values));
+    if ~isempty(values)
+        curve(r) = median(values);
+    end
+end
+end
+
+function tag = dimTagFromInput(dimVal)
+if isempty(dimVal)
+    tag = 'fixDim';
+    return;
+end
+if iscell(dimVal) && ~isempty(dimVal)
+    dimVal = dimVal{1};
+end
+if isnumeric(dimVal)
+    if dimVal == 0
+        tag = 'fixDim';
+    else
+        tag = sprintf('%dDim',dimVal);
     end
     return;
 end
-
-value=lower(strtrim(string(dimVal)));
-if value=="fix" || value=="fixdim"
-    tag='fixDim';
+value = lower(strtrim(string(dimVal)));
+if value == "fix" || value == "fixdim"
+    tag = 'fixDim';
 elseif endsWith(value,"dim")
-    tag=char(value);
+    tag = char(value);
 else
-    tag=char(value+"Dim");
+    tag = char(value+"Dim");
 end
 end
 
-function sheetName=sanitizeSheetName(sheetName)
-sheetName=char(string(sheetName));
-sheetName=regexprep(sheetName,'[:\\/?*\[\]]','_');
-if numel(sheetName)>31
-    sheetName=sheetName(1:31);
-end
-if isempty(sheetName)
-    sheetName='Sheet1';
-end
+function sheetName = sanitizeSheetName(sheetName)
+sheetName = char(string(sheetName));
+sheetName = regexprep(sheetName,'[:\\/?*\[\]]','_');
+if numel(sheetName) > 31, sheetName = sheetName(1:31); end
+if isempty(sheetName), sheetName = 'Sheet1'; end
 end

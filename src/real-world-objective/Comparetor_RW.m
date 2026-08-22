@@ -1,163 +1,204 @@
-function Comparetor_RW(CEC_Index, populationNo, maxRun, maxItr, CECsDim)
+function Comparetor_RW(CEC_Index,populationNo,maxRun,maxItr,CECsDim)
+%COMPARATOR_RW Run the constrained engineering benchmark suite.
 
-    %% Benchmark Function  (BASE: RunBenchmarkSuite style)
-    CECNames = "Real World Problems";
-    [~, costFunctionDetails, nFunction] = Load_CEC_Function(CEC_Index); %#ok<ASGLU>
+CECNames = 'Real World Problems';
+[~,~,nFunction] = Load_CEC_Function(CEC_Index);
+algorithmFileAddress = '\AlgorithmsName.txt';
+[algorithmsName,algorithms] = Get_algorithm(algorithmFileAddress);
+useParallel = isParallelEnabled(maxRun);
 
-    %% Load algorithms list  (BASE)
-    algorithmFileAddress = '\AlgorithmsName.txt';
-    [algorithmsName, algorithms] = Get_algorithm(algorithmFileAddress);
+for dimIdx = 1:numel(CECsDim)
+    d = CECsDim{dimIdx};
+    if iscell(d)
+        dim = d{1};
+        DimOverride = d{2};
+    else
+        dim = d;
+        DimOverride = d;
+    end
 
-    %% Decide parallel execution mode (MATCH RunBenchmarkSuite idea)
-    useParallel = isParallelEnabled(maxRun);
+    benchmarkResults = cell(size(algorithms,1),nFunction);
+    bestSolutionResults = cell(size(algorithms,1),nFunction);
+    runEvaluationResults = cell(size(algorithms,1),nFunction);
 
-    %% Loop over dimensions  (BASE)
-    for dimIdx = 1:numel(CECsDim)
+    for functionNo = 1:nFunction
+        problem = EngineeringProblem(functionNo);
+        functionName = problem.name;
+        Dim = problem.dimension;
+        LB = problem.lowerBound;
+        UB = problem.upperBound;
 
-        d = CECsDim{dimIdx};
-        if iscell(d)
-            dim = d{1};           % tag for output
-            DimOverride = d{2};   % numeric or []
-        else
-            dim = d;
-            DimOverride = d;
+        if ~isempty(DimOverride) && isnumeric(DimOverride) && ...
+                isscalar(DimOverride) && DimOverride ~= Dim
+            error('Comparetor_RW:FixedDimensionOverride', ...
+                ['Engineering Problem %d has fixed dimension %d. ' ...
+                 'A dimension override of %d is invalid.'], ...
+                functionNo,Dim,DimOverride);
         end
 
-        benchmarkResults = cell(size(algorithms, 1), nFunction);
-        bestSolutionResults = cell(size(algorithms, 1), nFunction);
+        localCostFunction = @(x) CostFunction(x,functionNo);
 
-        %% Loop over functions  (BASE)
-        for functionNo = 1:nFunction
+        for algorithmNo = 1:size(algorithms,1)
+            algorithm = algorithms{algorithmNo};
+            algorithmName = algorithmsName(algorithmNo);
 
-            functionName = ['Problem ' num2str(functionNo)];
+            curveMat = nan(maxItr,maxRun);
+            bestMerits = nan(maxRun,1);
+            bestSearchPositions = nan(maxRun,Dim);
 
-            % ===== RW OVERRIDE: bounds + objective =====
-            [Dim, LB, UB, VioFactor, ~, Obj] = ProbInfo(functionNo);
+            baseSeed = 1000000*CEC_Index + 10000*Dim + 100*functionNo + algorithmNo;
 
-            if ~isempty(DimOverride)
-                Dim = DimOverride;
-            end
+            if useParallel
+                fprintf('Mode:PARALLEL | RW:%s | P%d:%s | Alg:%s | Runs:%d\n', ...
+                    CECNames,functionNo,functionName,string(algorithmName),maxRun);
 
-            LB = LB .* ones(1, Dim);
-            UB = UB .* ones(1, Dim);
+                bestMeritsPar = nan(maxRun,1);
+                bestPositionsPar = nan(maxRun,Dim);
+                curvePar = nan(maxItr,maxRun);
+                algFun = algorithm;
+                LBp = LB; UBp = UB; Dp = Dim; popp = populationNo; itrp = maxItr;
+                objp = localCostFunction;
 
-            localCostFunction = @(x) CostFunction(x, VioFactor, Obj);
-            % ==========================================
-
-            %% Loop over algorithms  (BASE)
-            for algorithmNo = 1:size(algorithms, 1)
-
-                algorithm     = algorithms{algorithmNo};
-                algorithmName = algorithmsName(algorithmNo);
-
-                % Preallocate result containers (RW schema)
-                algorithmResults = -ones(maxItr + 1, maxRun);
-                bestResults      = zeros(maxRun, 1);
-                bestSolutions    = zeros(maxRun, Dim);
-
-                % Deterministic seed shared by serial and parallel execution
-                baseSeed = 1000000 * CEC_Index + 10000 * Dim + 100 * functionNo + algorithmNo;
-
-                if useParallel
-                    fprintf('Mode:PARALLEL | RW:%s | Dim:%d | %s | Alg:%s | Runs:%d\n', ...
-                        CECNames, Dim, functionName, string(algorithmName), maxRun);
+                parfor run = 1:maxRun
+                    rng(baseSeed+run,'twister');
+                    [bestMerit,bestPosition,curve] = algFun(LBp,UBp,Dp,popp,itrp,objp);
+                    bestMeritsPar(run) = bestMerit;
+                    bestPositionsPar(run,:) = bestPosition(:).';
+                    curvePar(:,run) = normalizeCurve(curve,itrp,bestMerit);
                 end
 
-                %% Runs
-                if useParallel
-                    curveMat      = -ones(maxItr, maxRun);   % keep same fill semantics
-                    bestResultsPar = zeros(maxRun, 1);
-                    bestPosPar     = zeros(maxRun, Dim);
+                bestMerits = bestMeritsPar;
+                bestSearchPositions = bestPositionsPar;
+                curveMat = curvePar;
+            else
+                for run = 1:maxRun
+                    rng(baseSeed+run,'twister');
+                    fprintf('Mode:SERIAL | RW:%s | P%d:%s | Alg:%s | Run:%d\n', ...
+                        CECNames,functionNo,functionName,string(algorithmName),run);
 
-                    algFun = algorithm;    % parfor-friendly local copy
-                    LBp = LB; UBp = UB; Dp = Dim; popp = populationNo; itrp = maxItr;
-                    objp = localCostFunction;
+                    [bestMerits(run),bestPosition,curve] = algorithm( ...
+                        LB,UB,Dim,populationNo,maxItr,localCostFunction);
+                    bestSearchPositions(run,:) = bestPosition(:).';
+                    curveMat(:,run) = normalizeCurve(curve,maxItr,bestMerits(run));
+                end
+            end
 
-                    parfor run = 1:maxRun
-                        rng(baseSeed + run, "twister");
+            runEvaluations = cell(maxRun,1);
+            for run = 1:maxRun
+                evaluation = EngineeringEvaluate(bestSearchPositions(run,:),functionNo);
+                runEvaluations{run} = evaluation;
 
-                        [b, p, curve] = algFun(LBp, UBp, Dp, popp, itrp, objp);
-
-                        bestResultsPar(run) = b;
-                        bestPosPar(run, :)  = p;
-
-                        % --- make fixed-length vector for parfor slicing ---
-                        tmp = -ones(itrp, 1);
-
-                        curve = curve(:);
-                        L = min(numel(curve), itrp);
-
-                        if L > 0
-                            tmp(1:L) = curve(1:L);
-                            if L < itrp
-                                tmp(L+1:itrp) = curve(L);   % pad with last value
-                            end
-                        end
-
-                        % only fixed slicing allowed in parfor:
-                        curveMat(:, run) = tmp;
-                    end
-
-
-                    bestResults   = bestResultsPar;
-                    bestSolutions = bestPosPar;
-                    algorithmResults(1:maxItr, :) = curveMat;
-
+                % Make the final convergence point match the reportable final
+                % objective whenever the run is valid. Invalid runs retain the
+                % optimizer merit and therefore cannot masquerade as good values.
+                if evaluation.isValidResult
+                    curveMat(maxItr,run) = evaluation.reportedObjective;
                 else
-                    for run = 1:maxRun
-                        rng(baseSeed + run, "twister");
-                        fprintf('Mode:SERIAL | RW:%s | Dim:%d | %s | Alg:%s | Run:%d\n', ...
-                            CECNames, Dim, functionName, string(algorithmName), run);
-
-                        [bestResults(run), bestSolutions(run, :), curve] = algorithm( ...
-                            LB, UB, Dim, populationNo, maxItr, localCostFunction);
-
-                        curve = curve(:);
-                        L = min(numel(curve), maxItr);
-                        if L > 0
-                            algorithmResults(1:L, run) = curve(1:L);
-                            if L < maxItr
-                                algorithmResults(L+1:maxItr, run) = curve(L);
-                            end
-                        end
-                    end
+                    curveMat(maxItr,run) = evaluation.merit;
                 end
-
-                % ===== RW OVERRIDE: storage + stats (keep your RW schema) =====
-                algorithmResults(maxItr, :) = bestResults;
-
-                [algorithmResults(:, maxRun + 1), ...
-                    algorithmResults(:, maxRun + 2), ...
-                    algorithmResults(:, maxRun + 3), ...
-                    algorithmResults(:, maxRun + 4)] = Results_Toolkit(algorithmResults);
-
-                % Store the decision vector from the run that produced the minimum final fitness
-                [bestFitness, bestRunIndex] = min(bestResults);
-                bestSolution = bestSolutions(bestRunIndex, :);
-                algorithmResults(maxItr + 1, 1:Dim) = bestSolution;
-
-                bestSolutionResults{algorithmNo, functionNo} = struct( ...
-                    'fitness', bestFitness, ...
-                    'run', bestRunIndex, ...
-                    'position', bestSolution);
-                % ============================================================
-
-                benchmarkResults{algorithmNo, functionNo} = algorithmResults;
-
-                clear algorithmResults bestResults bestSolutions
             end
+
+            [curveMin,curveMean,curveMax,curveStd] = summarizeRunMatrix(curveMat);
+            algorithmResults = [curveMat,curveMin,curveMean,curveMax,curveStd];
+
+            [bestEvaluation,bestRunIndex] = selectBestRun(runEvaluations);
+            bestSolutionResults{algorithmNo,functionNo} = struct( ...
+                'run',bestRunIndex, ...
+                'evaluation',bestEvaluation);
+            runEvaluationResults{algorithmNo,functionNo} = runEvaluations;
+            benchmarkResults{algorithmNo,functionNo} = algorithmResults;
         end
+    end
 
-        %% RW conclusion
-        ConclusionRW(benchmarkResults, maxItr, maxRun, algorithmFileAddress, nFunction, CEC_Index, dim, bestSolutionResults);
-        % PlotingRW(benchmarkResults, maxItr, maxRun, algorithmFileAddress, CEC_Index, dim);
+    ConclusionRW(benchmarkResults,maxItr,maxRun,algorithmFileAddress,nFunction, ...
+        CEC_Index,dim,bestSolutionResults,runEvaluationResults);
+    PlotingRW(benchmarkResults,maxItr,maxRun,algorithmFileAddress,dim);
+end
+end
 
+function curveOut = normalizeCurve(curve,maxItr,fallbackValue)
+curveOut = nan(maxItr,1);
+curve = double(curve(:));
+L = min(numel(curve),maxItr);
+if L > 0
+    curveOut(1:L) = curve(1:L);
+end
+
+% Preserve iteration positions. Never remove NaN/Inf entries because doing so
+% would shift later values to earlier iterations. Only extend a short curve
+% with its last finite value.
+if L < maxItr
+    finiteIndex = find(isfinite(curveOut(1:max(L,1))),1,'last');
+    if ~isempty(finiteIndex)
+        curveOut(L+1:maxItr) = curveOut(finiteIndex);
+    elseif isfinite(fallbackValue)
+        curveOut(L+1:maxItr) = fallbackValue;
+    end
+elseif L == 0 && isfinite(fallbackValue)
+    curveOut(:) = fallbackValue;
+end
+end
+
+function [rowMin,rowMean,rowMax,rowStd] = summarizeRunMatrix(values)
+rowCount = size(values,1);
+rowMin = nan(rowCount,1);
+rowMean = nan(rowCount,1);
+rowMax = nan(rowCount,1);
+rowStd = nan(rowCount,1);
+for r = 1:rowCount
+    v = values(r,:);
+    v = v(isfinite(v));
+    if isempty(v)
+        continue;
+    end
+    rowMin(r) = min(v);
+    rowMean(r) = mean(v);
+    rowMax(r) = max(v);
+    if numel(v) > 1
+        rowStd(r) = std(v,0);
+    else
+        rowStd(r) = 0;
+    end
+end
+end
+
+function [bestEvaluation,bestRunIndex] = selectBestRun(runEvaluations)
+runCount = numel(runEvaluations);
+valid = false(runCount,1);
+objective = inf(runCount,1);
+violation = inf(runCount,1);
+
+for k = 1:runCount
+    e = runEvaluations{k};
+    if isempty(e)
+        continue;
+    end
+    valid(k) = e.isValidResult;
+    if e.isValidResult && isfinite(e.rawObjective)
+        objective(k) = e.rawObjective;
+    end
+    if isfinite(e.weightedViolation)
+        violation(k) = e.weightedViolation;
     end
 end
 
-%% ===== Local helper (NOT nested inside loops) =====
+if any(valid)
+    candidates = find(valid);
+    [~,localIndex] = min(objective(candidates));
+    bestRunIndex = candidates(localIndex);
+else
+    [~,bestRunIndex] = min(violation);
+    if isempty(bestRunIndex) || ~isfinite(violation(bestRunIndex))
+        bestRunIndex = 1;
+    end
+end
+
+bestEvaluation = runEvaluations{bestRunIndex};
+end
+
 function tf = isParallelEnabled(maxRunLocal)
-    global RUN_PARALLEL;
-    pool = gcp('nocreate');
-    tf = ~isempty(RUN_PARALLEL) && RUN_PARALLEL && ~isempty(pool) && pool.NumWorkers > 1 && maxRunLocal > 1;
+global RUN_PARALLEL;
+pool = gcp('nocreate');
+tf = ~isempty(RUN_PARALLEL) && RUN_PARALLEL && ~isempty(pool) && ...
+    pool.NumWorkers > 1 && maxRunLocal > 1;
 end

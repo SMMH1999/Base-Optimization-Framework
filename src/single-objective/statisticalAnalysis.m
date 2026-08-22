@@ -594,13 +594,17 @@ function exportAllAlgorithmBoxplots(benchmarkResults,maxItr,maxRun,algorithmName
     figureWidth=max(1800,360*numColumns);
     figureHeight=max(900,300*numRows);
     fig=figure('Visible','off','Color','w','Position',[80 80 figureWidth figureHeight]);
-    tl=tiledlayout(fig,numRows,numColumns,'Padding','compact','TileSpacing','compact');
-    sgtitle(tl,sprintf('CEC%s Normalized Final Fitness Boxplots Across All Algorithms',char(string(cecLabel))), ...
-        'FontWeight','bold','FontSize',16);
+    cleanup=onCleanup(@() closeFigureIfValid(fig)); %#ok<NASGU>
+    titleText=sprintf('CEC%s Normalized Final Fitness Boxplots Across All Algorithms', ...
+        char(string(cecLabel)));
 
+    % Keep the established boxplot visual style. Legacy boxplot mutates axes
+    % Position internally, which conflicts with TiledChartLayout ownership and
+    % causes Position/InnerPosition warnings. subplot avoids that conflict.
+    figure(fig);
     for plotIndex=1:numPlots
         currentPlot=plotData{plotIndex};
-        ax=nexttile(tl,plotIndex);
+        ax=subplot(numRows,numColumns,plotIndex);
         boxplot(ax,currentPlot.groupedValues,currentPlot.groupedLabels, ...
             'Labels',cellstr(currentPlot.presentNames),'Symbol','o');
         grid(ax,'on');
@@ -609,16 +613,34 @@ function exportAllAlgorithmBoxplots(benchmarkResults,maxItr,maxRun,algorithmName
         xlabel(ax,'Algorithms');
         ylabel(ax,'Normalized fitness');
         ylim(ax,[-0.05 1.05]);
-        if numel(currentPlot.presentNames)>4
+        if numel(currentPlot.presentNames)>4 && exist('xtickangle','file')==2
             xtickangle(ax,25);
         end
     end
+    addFigureTitle(fig,titleText);
 
     fileStem=sprintf('CEC%s_AllFunctions_AllAlgorithms_NormalizedFitness_Boxplots', ...
         char(string(cecLabel)));
-    exportgraphics(fig,fullfile(plotDir,[fileStem '.png']),'Resolution',300);
-    exportgraphics(fig,fullfile(plotDir,[fileStem '.svg']),'ContentType','vector');
-    close(fig);
+    exportRasterPng(fig,fullfile(plotDir,[fileStem '.png']),300,12000);
+    exportVectorSvg(fig,fullfile(plotDir,[fileStem '.svg']));
+end
+
+function addFigureTitle(fig,titleText)
+    %ADDFIGURETITLE Shared title compatible with older MATLAB releases.
+    if exist('sgtitle','file')==2
+        figure(fig);
+        sgtitle(titleText,'FontWeight','bold','FontSize',16);
+    else
+        annotation(fig,'textbox',[0 0.965 1 0.03], ...
+            'String',titleText,'EdgeColor','none', ...
+            'HorizontalAlignment','center','FontWeight','bold','FontSize',16);
+    end
+end
+
+function closeFigureIfValid(fig)
+    if isgraphics(fig,'figure')
+        close(fig);
+    end
 end
 
 function normalizedValues=normalizeBoxplotValues(values)

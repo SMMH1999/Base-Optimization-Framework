@@ -265,7 +265,8 @@ end
 function value=recordedObjective(costFunction,x,counter,recorder,populationNo)
 %RECORDEDOBJECTIVE Evaluate the objective and record lightweight telemetry.
 value=costFunction(x);
-counter.count=counter.count+1;
+evaluationCount=max(1,numel(value));
+counter.count=counter.count+evaluationCount;
 
 if ~counter.warned && counter.count>counter.maxFEs
     counter.warned=true;
@@ -366,6 +367,7 @@ end
 numFunctions=numel(validResults);
 figureHeight=max(1000,360*numFunctions);
 fig=figure('Visible','off','Color','w','Position',[50 50 2500 figureHeight]);
+cleanup=onCleanup(@() closeDiagnosticFigure(fig)); %#ok<NASGU>
 tl=tiledlayout(fig,numFunctions,5,'Padding','compact','TileSpacing','compact');
 sgtitle(tl,sprintf('Qualitative Search Behavior Analysis of %s',char(algorithmName)), ...
     'FontWeight','bold','FontSize',16);
@@ -393,9 +395,15 @@ for rowIndex=1:numFunctions
 end
 
 fileStem=sprintf('CEC2005_%s_DiagnosticSummary',sanitizeFileName(algorithmName));
-exportgraphics(fig,fullfile(plotDir,[fileStem '.png']),'Resolution',300);
-exportgraphics(fig,fullfile(plotDir,[fileStem '.svg']),'ContentType','vector');
-close(fig);
+exportRasterPng(fig,fullfile(plotDir,[fileStem '.png']),300,12000);
+exportVectorSvg(fig,fullfile(plotDir,[fileStem '.svg']));
+end
+
+function closeDiagnosticFigure(fig)
+%CLOSEDIAGNOSTICFIGURE Close the diagnostic figure on success or failure.
+if isgraphics(fig,'figure')
+    close(fig);
+end
 end
 
 function [gridX,gridY,gridZ]=buildSurfaceData(costFunction,lbVec,ubVec,anchorPoint,gridSize)
