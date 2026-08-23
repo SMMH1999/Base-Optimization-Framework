@@ -108,6 +108,11 @@ function [] = Ploting(benchmarkResults, maxItr, maxRun, algorithmFileAddress, ce
                 set(mainAx, 'YScale', 'linear');
             end
 
+            % Apply consistent scientific frame formatting.
+            grid(mainAx,'on');
+            box(mainAx,'on');
+            mainAx.GridAlpha = 0.15;
+
             % Set subplot title and axis labels
 
             %
@@ -141,11 +146,15 @@ function [] = finalizeFigure(path, figureCounter, cecName, plotHandles, legendEn
     %   legendEntries - Labels for legend entries
 
     % Create a horizontal legend below the plots
-    hL = legend(plotHandles, legendEntries, 'Orientation','horizontal','Location','southoutside');
+    hL = legend(plotHandles, legendEntries, 'Orientation','horizontal','Location','none');
     set(hL, 'Position',[0.175,0.015,0.68,0.03],'Units','normalized');
 
-    % Add a shared title for the figure
-    sgtitle(sprintf('CEC Benchmark Functions %s', cecName));
+    % Add a fixed figure-level title without triggering axes re-layout.
+    % sgtitle changes subplot geometry after inset axes are created.
+    annotation(gcf,'textbox',[0 0.965 1 0.03], ...
+        'String',sprintf('CEC Benchmark Functions %s', cecName), ...
+        'EdgeColor','none','HorizontalAlignment','center', ...
+        'FontWeight','bold');
 
     % Save a pure-vector SVG when supported (EPS fallback otherwise) plus a raster JPG preview.
     exportVectorSvg(gcf, fullfile(path, sprintf('CEC_Plots%d.svg', figureCounter)));
@@ -185,6 +194,9 @@ function addOverlapInset(mainAx, curveData, lineHandles, maxItr, iterationCount,
     tailStart = max(1, maxItr-iterationCount+1);
     tailX = tailStart:maxItr;
     tailData = curveData(tailX, selectedAlgorithms);
+
+    % Resolve pending graphics layout before computing inset position.
+    drawnow;
 
     originalUnits = get(mainAx, 'Units');
     set(mainAx, 'Units', 'normalized');

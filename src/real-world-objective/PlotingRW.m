@@ -122,18 +122,15 @@ end
 function finalizeFigure(fig,plotDir,figureCounter,plotHandles,legendEntries)
 if ~isempty(plotHandles)
     hLegend=legend(plotHandles,cellstr(legendEntries), ...
-        'Orientation','horizontal','Location','southoutside');
+        'Orientation','horizontal','Location','none');
     set(hLegend,'Position',[0.175,0.015,0.68,0.03],'Units','normalized');
 end
 
-if exist('sgtitle','file')==2
-    figure(fig);
-    sgtitle('Real-World Engineering Benchmark Convergence');
-else
-    annotation(fig,'textbox',[0 0.965 1 0.03], ...
-        'String','Real-World Engineering Benchmark Convergence', ...
-        'EdgeColor','none','HorizontalAlignment','center','FontWeight','bold');
-end
+% Use a fixed annotation title. sgtitle changes subplot geometry and
+% causes normalized-position inset axes to drift.
+annotation(fig,'textbox',[0 0.965 1 0.03], ...
+    'String','Real-World Engineering Benchmark Convergence', ...
+    'EdgeColor','none','HorizontalAlignment','center','FontWeight','bold');
 
 svgPath=fullfile(plotDir,sprintf('RW_Plots%d.svg',figureCounter));
 jpgPath=fullfile(plotDir,sprintf('RW_Plots%d.jpg',figureCounter));
@@ -167,6 +164,9 @@ end
 tailStart=max(1,maxItr-iterationCount+1);
 tailX=tailStart:maxItr;
 tailData=curveData(tailX,selectedColumns);
+
+% Resolve pending graphics layout before computing inset position.
+drawnow;
 
 originalUnits=get(mainAx,'Units');
 set(mainAx,'Units','normalized');

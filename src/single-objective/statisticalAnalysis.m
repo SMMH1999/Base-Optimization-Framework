@@ -601,12 +601,43 @@ function exportAllAlgorithmBoxplots(benchmarkResults,maxItr,maxRun,algorithmName
     % Keep the established boxplot visual style. Legacy boxplot mutates axes
     % Position internally, which conflicts with TiledChartLayout ownership and
     % causes Position/InnerPosition warnings. subplot avoids that conflict.
+    % figure(fig);
+    % for plotIndex=1:numPlots
+    %     currentPlot=plotData{plotIndex};
+    %     ax=subplot(numRows,numColumns,plotIndex);
+    %     boxplot(ax,currentPlot.groupedValues,currentPlot.groupedLabels, ...
+    %         'Labels',cellstr(currentPlot.presentNames),'Symbol','o');
+    %     grid(ax,'on');
+    %     box(ax,'on');
+    %     title(ax,sprintf('F%d',currentPlot.functionIndex));
+    %     xlabel(ax,'Algorithms');
+    %     ylabel(ax,'Normalized fitness');
+    %     ylim(ax,[-0.05 1.05]);
+    %     if numel(currentPlot.presentNames)>4 && exist('xtickangle','file')==2
+    %         xtickangle(ax,25);
+    %     end
+    % end
+    % addFigureTitle(fig,titleText);
+
     figure(fig);
+
+    % Create global title before subplot layout is generated.
+    % This prevents sgtitle from modifying subplot geometry afterwards.
+    addFigureTitle(fig,titleText);
+
     for plotIndex=1:numPlots
         currentPlot=plotData{plotIndex};
         ax=subplot(numRows,numColumns,plotIndex);
-        boxplot(ax,currentPlot.groupedValues,currentPlot.groupedLabels, ...
-            'Labels',cellstr(currentPlot.presentNames),'Symbol','o');
+
+        % Preserve subplot geometry because MATLAB boxplot modifies axes.
+        axPosition=ax.Position;
+        boxplot(ax,currentPlot.groupedValues,currentPlot.groupedLabels,'Labels',cellstr(currentPlot.presentNames),'Symbol','o');
+        drawnow;
+
+
+
+        % Restore subplot position after boxplot internal modifications.
+        ax.Position=axPosition;
         grid(ax,'on');
         box(ax,'on');
         title(ax,sprintf('F%d',currentPlot.functionIndex));
@@ -617,7 +648,22 @@ function exportAllAlgorithmBoxplots(benchmarkResults,maxItr,maxRun,algorithmName
             xtickangle(ax,25);
         end
     end
-    addFigureTitle(fig,titleText);
+
+    % Reserve space for global title
+    allAxes = findall(fig,'Type','axes');
+
+    topMargin = 0.01;
+
+    for k = 1:numel(allAxes)
+
+        pos = allAxes(k).Position;
+
+        pos(2) = pos(2) - topMargin;
+        pos(4) = pos(4) - topMargin;
+
+        allAxes(k).Position = pos;
+
+    end
 
     fileStem=sprintf('CEC%s_AllFunctions_AllAlgorithms_NormalizedFitness_Boxplots', ...
         char(string(cecLabel)));

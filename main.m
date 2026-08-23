@@ -71,7 +71,7 @@ RUN_PARALLEL = false; % <<< set to false to disable parallel mode
 
 %% Parameters
 maxRun = 3;          % Number of independent runs for each algorithm
-maxItr = 500;         % Maximum number of iterations
+maxItr = 300;         % Maximum number of iterations
 populationNo = 30;    % Population size for algorithms
 
 if RUN_PARALLEL
@@ -91,7 +91,7 @@ CECsDim = { ...
     { 10, 30 }, ...                         % CEC2014
     { 10, 30 }, ...                         % CEC2017
     { {'fixDim', []} }, ...                          % CEC2019
-    { 10, 20 }, ...                                  % CEC2020
+    { 20 }, ...                                  % CEC2020
     { 10, 20 } ...                                   % CEC2022
     { {'fixDim', []} }, ...                          % Real World Problem
     };
