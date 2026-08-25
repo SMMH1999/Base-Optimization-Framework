@@ -641,7 +641,7 @@ function exportAllAlgorithmBoxplots(benchmarkResults,maxItr,maxRun,algorithmName
         grid(ax,'on');
         box(ax,'on');
         title(ax,sprintf('F%d',currentPlot.functionIndex));
-        xlabel(ax,'Algorithms');
+        % xlabel(ax,'Algorithms');
         ylabel(ax,'Normalized fitness');
         ylim(ax,[-0.05 1.05]);
         if numel(currentPlot.presentNames)>4 && exist('xtickangle','file')==2

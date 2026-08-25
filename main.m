@@ -23,13 +23,13 @@ statsConfig.rankingMetric = "mean";
 statsConfig.comparisonAbsoluteTolerance = 1e-14;
 statsConfig.comparisonUlpFactor = 16;
 statsConfig.applyHolm = true;
-statsConfig.exportBoxplots = true;
+statsConfig.exportBoxplots = false;
 statsConfig.boxplotFunctions = [];
 statisticalConfig('set', statsConfig);
 
 %% Reference algorithm diagnostic configuration
 diagConfig = struct();
-diagConfig.enabled = true;
+diagConfig.enabled = false;
 diagConfig.cecIndex = 1;
 diagConfig.functionIndices = [1 5 8 9 11];
 diagConfig.runSelection = "median";
@@ -44,7 +44,7 @@ referenceDiagnosticConfig('set', diagConfig);
 %% Exploration / Exploitation configuration
 % Independent from Diagnostic. By default every function of every CEC is analyzed.
 eeConfig = struct();
-eeConfig.enabled = true;
+eeConfig.enabled = false;
 eeConfig.cecIndices = 1:6;             % 1=2005, 2=2014, 3=2017, 4=2019, 5=2020, 6=2022
 eeConfig.functionIndices = [];         % [] = all available functions in each selected CEC
 eeConfig.referenceAlgorithm = 1;       % Main/reference algorithm index
@@ -71,7 +71,7 @@ RUN_PARALLEL = false; % <<< set to false to disable parallel mode
 
 %% Parameters
 maxRun = 3;          % Number of independent runs for each algorithm
-maxItr = 300;         % Maximum number of iterations
+maxItr = 500;         % Maximum number of iterations
 populationNo = 30;    % Population size for algorithms
 
 if RUN_PARALLEL
@@ -89,9 +89,9 @@ end
 CECsDim = { ...
     { {'fixDim', []} }, ...                          % CEC2005
     { 10, 30 }, ...                         % CEC2014
-    { 10, 30 }, ...                         % CEC2017
+    { 30 }, ...                         % CEC2017
     { {'fixDim', []} }, ...                          % CEC2019
-    { 20 }, ...                                  % CEC2020
+    { 10, 20 }, ...                                  % CEC2020
     { 10, 20 } ...                                   % CEC2022
     { {'fixDim', []} }, ...                          % Real World Problem
     };
